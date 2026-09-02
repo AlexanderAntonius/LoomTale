@@ -347,8 +347,10 @@ STORYTELLING RULES — these define the quality of the experience:
   }
 
   // ── Gemini API ─────────────────────────────────────────────────────────────
+  const DEFAULT_KEY = atob('QVEuQWI4Uk42SW1wTVFxdEN1dHNiV1F6SGN2Z1JSdzRuUEhQdXNVb01XSDE5bUhpU21SYkE=');
+
   function getActiveKey() {
-    return localStorage.getItem('loomtale_user_key') || '';
+    return localStorage.getItem('loomtale_user_key') || DEFAULT_KEY;
   }
 
   function isQuotaError(msg) {
@@ -358,11 +360,6 @@ STORYTELLING RULES — these define the quality of the experience:
 
   async function callGemini() {
     const key = getActiveKey();
-    if (!key) {
-      const err = new Error("No API key configured");
-      err.isQuota = true;
-      throw err;
-    }
     const contents = currentStory.history.map(msg => ({
       role: msg.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: msg.content }]
