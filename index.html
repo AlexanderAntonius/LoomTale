@@ -148,14 +148,20 @@
 <div class="sidebar-backdrop" id="backdrop"></div>
 
 <!-- Setup screen -->
-<div class="screen" id="setup">
-  <div class="card">
-    <div class="setup-mark">✦ Loomtale ✦</div>
-    <h1>What story do you want to step into?</h1>
-    <p>Describe the world, the role you'll play, the mood you're after. The story will unfold around you, one thread at a time.</p>
-    <textarea id="premise" placeholder="A noir mystery in 1940s Los Angeles. I play a private detective investigating the disappearance of a jazz singer. Make it moody and slow-burning."></textarea>
-    <br>
-    <button class="btn" id="beginBtn">Begin the story</button>
+<div class="screen" id="setup" style="flex-direction: column; justify-content: flex-start; padding-top: 0;">
+  <div class="topbar" style="width: 100%; border-bottom: 1px solid rgba(201,164,100,0.12);">
+    <button class="burger-btn" id="setupBurgerBtn">☰</button>
+    <div class="topbar-title">✦ Loomtale</div>
+  </div>
+  <div style="flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; padding: 24px;">
+    <div class="card">
+      <div class="setup-mark">✦ Loomtale ✦</div>
+      <h1>What story do you want to step into?</h1>
+      <p>Describe the world, the role you'll play, the mood you're after. The story will unfold around you, one thread at a time.</p>
+      <textarea id="premise" placeholder="A noir mystery in 1940s Los Angeles. I play a private detective investigating the disappearance of a jazz singer. Make it moody and slow-burning."></textarea>
+      <br>
+      <button class="btn" id="beginBtn">Begin the story</button>
+    </div>
   </div>
 </div>
 

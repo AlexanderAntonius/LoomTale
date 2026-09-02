@@ -357,12 +357,18 @@ STORYTELLING RULES — these define the quality of the experience:
   }
 
   async function callGemini() {
+    const key = getActiveKey();
+    if (!key) {
+      const err = new Error("No API key configured");
+      err.isQuota = true;
+      throw err;
+    }
     const contents = currentStory.history.map(msg => ({
       role: msg.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: msg.content }]
     }));
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${getActiveKey()}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -376,7 +382,7 @@ STORYTELLING RULES — these define the quality of the experience:
     const data = await res.json();
     if (data.error) {
       const err = new Error(data.error.message);
-      err.isQuota = isQuotaError(data.error.message) || res.status === 429;
+      err.isQuota = isQuotaError(data.error.message) || res.status === 429 || res.status === 403;
       throw err;
     }
     return data.candidates[0].content.parts[0].text;
@@ -424,6 +430,7 @@ STORYTELLING RULES — these define the quality of the experience:
 
   // ── Events ─────────────────────────────────────────────────────────────────
   burgerBtn.addEventListener('click', () => Sidebar.open());
+  document.getElementById('setupBurgerBtn')?.addEventListener('click', () => Sidebar.open());
   sidebarCloseBtn.addEventListener('click', () => Sidebar.close());
   backdropEl.addEventListener('click', () => Sidebar.close());
   sidebarNewBtn.addEventListener('click', goToSetup);
