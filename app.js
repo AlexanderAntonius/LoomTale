@@ -109,7 +109,7 @@ STORYTELLING RULES — these define the quality of the experience:
   async function generateTitle(premise, storyId) {
     try {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${getActiveKey()}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -453,6 +453,8 @@ STORYTELLING RULES — these define the quality of the experience:
   beginBtn.addEventListener('click', () => {
     const premise = premiseEl.value.trim();
     if (!premise) { premiseEl.focus(); return; }
+    logEl.innerHTML = '';
+    sceneChipEl.textContent = '';
     currentStory = createStory(premise);
     Storage.save(currentStory);
     showScreen('app');
