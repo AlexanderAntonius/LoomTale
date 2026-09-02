@@ -291,6 +291,7 @@ STORYTELLING RULES — these define the quality of the experience:
     if (!isReplaying) sceneChipEl.textContent = div.textContent;
     if (currentStory) { currentStory.lastMood = mood; currentStory.lastScene = setting || ''; }
     scrollBottom();
+    return div;
   }
 
   function addNarration(text) {
@@ -299,6 +300,7 @@ STORYTELLING RULES — these define the quality of the experience:
     div.innerHTML = '<div class="narration"></div>';
     div.querySelector('.narration').textContent = text;
     logEl.appendChild(div); scrollBottom();
+    return div;
   }
 
   function addCharacter(name, text) {
@@ -308,6 +310,7 @@ STORYTELLING RULES — these define the quality of the experience:
     div.innerHTML = '<div class="char-row"><div class="avatar" style="background:var(--' + color + ')">' + name.charAt(0).toUpperCase() + '</div><div class="char-body"><div class="char-name" style="color:var(--' + color + ')">' + escapeHtml(name) + '</div><div class="bubble"></div></div></div>';
     div.querySelector('.bubble').textContent = text;
     logEl.appendChild(div); scrollBottom();
+    return div;
   }
 
   let thinkingEl = null;
@@ -320,12 +323,14 @@ STORYTELLING RULES — these define the quality of the experience:
   function hideThinking() { if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; } }
 
   function parseAndRender(raw) {
+    let firstNode = null;
     let text = raw.trim();
     const sm = text.match(/^\[SCENE:\s*([^,\]]+)\s*(?:,\s*([^\]]+))?\]\s*/i);
     if (sm) {
       const mood = sm[1].trim().toLowerCase();
       const setting = sm[2] ? sm[2].trim() : '';
-      addSceneMarker(mood, setting);
+      const el = addSceneMarker(mood, setting);
+      if (!firstNode) firstNode = el;
       setMood(mood);
       text = text.slice(sm[0].length);
     }
@@ -341,9 +346,17 @@ STORYTELLING RULES — these define the quality of the experience:
     segments.forEach(seg => {
       const t = seg.text.trim();
       if (!t) return;
-      if (seg.speaker.toUpperCase() === 'NARRATOR') addNarration(t);
-      else addCharacter(seg.speaker, t);
+      let el;
+      if (seg.speaker.toUpperCase() === 'NARRATOR') el = addNarration(t);
+      else el = addCharacter(seg.speaker, t);
+      if (!firstNode) firstNode = el;
     });
+
+    if (!isReplaying && firstNode) {
+      setTimeout(() => {
+        firstNode.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+    }
   }
 
   // ── Gemini API ─────────────────────────────────────────────────────────────
@@ -413,7 +426,7 @@ STORYTELLING RULES — these define the quality of the experience:
       }
       console.error(err);
     }
-    sendBtn.disabled = false; inputEl.disabled = false; inputEl.focus();
+    sendBtn.disabled = false; inputEl.disabled = false;
   }
 
   // ── Quota modal ────────────────────────────────────────────────────────────
@@ -466,6 +479,7 @@ STORYTELLING RULES — these define the quality of the experience:
     if (!text) return;
     inputEl.value = '';
     inputEl.style.height = 'auto';
+    inputEl.blur();
     sendTurn(text);
   });
 
