@@ -350,7 +350,8 @@ STORYTELLING RULES — these define the quality of the experience:
   const DEFAULT_KEY = atob('QVEuQWI4Uk42SW1wTVFxdEN1dHNiV1F6SGN2Z1JSdzRuUEhQdXNVb01XSDE5bUhpU21SYkE=');
 
   function getActiveKey() {
-    return localStorage.getItem('loomtale_user_key') || DEFAULT_KEY;
+    const k = localStorage.getItem('loomtale_user_key');
+    return (k && k.trim()) ? k.trim() : DEFAULT_KEY;
   }
 
   function isQuotaError(msg) {
