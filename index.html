@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loomtale</title>
+<style>
+  :root {
+    --void: #0d0f1a;
+    --void-deep: #08090f;
+    --moon: #ede6d3;
+    --mist: #8b93a7;
+    --mist-dim: #565d70;
+    --gold: #c9a464;
+    --gold-dim: #7a6644;
+    --panel: rgba(237, 230, 211, 0.04);
+    --panel-border: rgba(201, 164, 100, 0.18);
+    --c-rose: #c97a91;
+    --c-sage: #7fa088;
+    --c-dusk: #8079c9;
+    --c-teal: #5fa3a0;
+    --c-amber: #cf7a4a;
+    --c-peri: #7196c9;
+    --font-display: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--void); color: var(--moon); font-family: var(--font-body); overflow: hidden; }
+
+  /* backgrounds */
+  .bg-layer { position: fixed; inset: 0; z-index: -3; opacity: 0; transition: opacity 2.2s ease; background: linear-gradient(160deg, #161822, var(--void-deep)); }
+  .bg-layer.active { opacity: 1; }
+  .bg-vignette { position: fixed; inset: 0; z-index: -2; pointer-events: none; background: radial-gradient(circle at 50% 25%, transparent 0%, rgba(0,0,0,0.55) 100%); }
+
+  /* screens */
+  .screen { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px; z-index: 5; }
+  .screen.show { display: flex; }
+  .card { max-width: 520px; width: 100%; text-align: center; }
+  .setup-mark { font-size: 13px; letter-spacing: 5px; color: var(--gold); text-transform: uppercase; margin-bottom: 10px; }
+  .card h1 { font-family: var(--font-display); font-style: italic; font-weight: 400; font-size: 34px; margin: 0 0 6px; color: var(--moon); }
+  .card p { color: var(--mist); font-size: 13px; line-height: 1.6; margin: 0 0 24px; }
+  textarea { width: 100%; min-height: 120px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; color: var(--moon); font-family: var(--font-body); font-size: 14px; line-height: 1.6; padding: 14px 16px; resize: vertical; outline: none; transition: border-color 0.2s ease; }
+  textarea::placeholder { color: var(--mist-dim); }
+  textarea:focus { border-color: var(--gold-dim); }
+  .btn { margin-top: 18px; background: transparent; border: 1px solid var(--gold); color: var(--gold); font-family: var(--font-body); font-size: 12px; letter-spacing: 2.5px; text-transform: uppercase; padding: 12px 30px; border-radius: 999px; cursor: pointer; transition: background 0.2s ease, color 0.2s ease; }
+  .btn:hover { background: var(--gold); color: var(--void-deep); }
+  .btn:disabled { opacity: 0.5; cursor: default; background: transparent; color: var(--gold); }
+
+  /* sidebar */
+  .sidebar { position: fixed; top: 0; left: -300px; width: 270px; height: 100%; z-index: 30; background: #0b0d18; border-right: 1px solid rgba(201,164,100,0.13); display: flex; flex-direction: column; transition: left 0.28s ease; }
+  .sidebar.open { left: 0; }
+  .sidebar-backdrop { position: fixed; inset: 0; z-index: 29; background: rgba(0,0,0,0.5); opacity: 0; pointer-events: none; transition: opacity 0.28s ease; }
+  .sidebar-backdrop.show { opacity: 1; pointer-events: all; }
+  .sidebar-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 14px; border-bottom: 1px solid rgba(201,164,100,0.1); }
+  .sidebar-label { font-family: var(--font-display); font-style: italic; font-size: 14px; color: var(--moon); }
+  .sidebar-x { background: none; border: none; color: var(--mist); font-size: 18px; cursor: pointer; padding: 2px 6px; line-height: 1; border-radius: 4px; }
+  .sidebar-x:hover { color: var(--moon); background: rgba(255,255,255,0.06); }
+  .sidebar-new-btn { margin: 10px 12px; background: transparent; border: 1px solid rgba(201,164,100,0.4); color: var(--gold); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; padding: 9px; border-radius: 6px; cursor: pointer; transition: background 0.2s, color 0.2s; }
+  .sidebar-new-btn:hover { background: var(--gold); color: var(--void-deep); }
+  .sidebar-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+  .sidebar-empty { padding: 24px 16px; color: var(--mist-dim); font-size: 13px; font-style: italic; text-align: center; line-height: 1.6; }
+  .story-card { display: flex; align-items: center; gap: 8px; padding: 11px 14px; cursor: pointer; border-left: 2px solid transparent; transition: background 0.15s, border-color 0.15s; }
+  .story-card:hover { background: rgba(237,230,211,0.04); }
+  .story-card.active { border-left-color: var(--gold); background: rgba(201,164,100,0.07); }
+  .story-info { flex: 1; min-width: 0; }
+  .story-name { font-size: 13px; color: var(--moon); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; font-family: var(--font-display); font-style: italic; }
+  .story-meta { font-size: 10px; color: var(--mist-dim); letter-spacing: 0.4px; }
+  .story-del { flex: none; background: none; border: none; color: transparent; font-size: 13px; cursor: pointer; padding: 4px 6px; border-radius: 4px; transition: color 0.15s, background 0.15s; }
+  .story-card:hover .story-del { color: var(--mist-dim); }
+  .story-del:hover { color: #c97a7a !important; background: rgba(201,122,122,0.1); }
+  @media (max-width: 520px) { .sidebar { width: min(270px, 82vw); } }
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-thumb { background: rgba(201,164,100,0.15); border-radius: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  /* app */
+  .app { position: fixed; inset: 0; display: none; flex-direction: column; z-index: 2; }
+  .app.show { display: flex; }
+  .topbar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid rgba(201,164,100,0.12); backdrop-filter: blur(6px); }
+  .burger-btn { background: none; border: none; color: var(--mist); font-size: 18px; cursor: pointer; padding: 4px 8px; border-radius: 4px; line-height: 1; flex: none; transition: color 0.2s; }
+  .burger-btn:hover { color: var(--moon); }
+  .topbar-title { font-family: var(--font-display); font-style: italic; font-size: 16px; color: var(--moon); flex: none; }
+  .scene-chip { flex: 1; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--gold); opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ghost-btn { flex: none; background: none; border: 1px solid rgba(139,147,167,0.3); color: var(--mist); font-size: 11px; letter-spacing: 1px; padding: 6px 12px; border-radius: 999px; cursor: pointer; transition: border-color 0.2s, color 0.2s; white-space: nowrap; }
+  .ghost-btn:hover { border-color: var(--mist); color: var(--moon); }
+  .log-wrap { flex: 1; overflow-y: auto; position: relative; padding: 30px 0 10px; }
+  .log { max-width: 620px; margin: 0 auto; padding: 0 24px 20px; position: relative; }
+  .log::before { content: ''; position: absolute; left: 24px; top: 4px; bottom: 20px; width: 1px; background: linear-gradient(to bottom, transparent, var(--gold-dim) 6%, var(--gold-dim) 94%, transparent); opacity: 0.35; }
+  .entry { position: relative; margin-bottom: 22px; padding-left: 34px; animation: rise 0.5s ease both; }
+  .entry.no-anim { animation: none; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .scene-marker { display: flex; align-items: center; gap: 10px; padding-left: 34px; margin: 28px 0; color: var(--gold); font-size: 10.5px; letter-spacing: 2.5px; text-transform: uppercase; position: relative; }
+  .scene-marker.no-anim { }
+  .scene-marker::before { content: ''; position: absolute; left: 20px; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 8px rgba(201,164,100,0.7); }
+  .narration { font-family: var(--font-display); font-style: italic; font-size: 15.5px; line-height: 1.75; color: var(--moon); opacity: 0.92; border-left: 2px solid var(--gold-dim); padding-left: 16px; }
+  .char-row { display: flex; gap: 10px; align-items: flex-start; }
+  .avatar { flex: none; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-size: 13px; font-weight: bold; color: var(--void-deep); margin-top: 2px; }
+  .char-body { flex: 1; min-width: 0; }
+  .char-name { font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 5px; opacity: 0.85; }
+  .bubble { display: inline-block; padding: 11px 15px; border-radius: 4px 14px 14px 14px; font-size: 14px; line-height: 1.6; background: var(--panel); border: 1px solid var(--panel-border); }
+  .you-row { display: flex; justify-content: flex-end; }
+  .you-bubble { max-width: 80%; background: rgba(201,164,100,0.1); border: 1px solid rgba(201,164,100,0.25); color: var(--moon); padding: 11px 15px; border-radius: 14px 4px 14px 14px; font-size: 14px; line-height: 1.6; }
+  .you-label { text-align: right; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--mist); margin-bottom: 5px; }
+  .thinking { display: flex; align-items: center; gap: 6px; padding-left: 34px; color: var(--mist); font-family: var(--font-display); font-style: italic; font-size: 13.5px; }
+  .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--gold-dim); animation: pulse 1.2s infinite ease-in-out; }
+  .dot:nth-child(2) { animation-delay: 0.15s; }
+  .dot:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes pulse { 0%,80%,100% { opacity: 0.25; } 40% { opacity: 1; } }
+  .composer { border-top: 1px solid rgba(201,164,100,0.12); padding: 12px 24px 18px; backdrop-filter: blur(6px); }
+  .composer-inner { max-width: 620px; margin: 0 auto; display: flex; gap: 10px; align-items: flex-end; }
+  .composer textarea { min-height: 44px; max-height: 140px; padding: 11px 14px; font-size: 14px; }
+  .send-btn { flex: none; background: var(--gold); color: var(--void-deep); border: none; height: 44px; padding: 0 20px; border-radius: 8px; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer; transition: opacity 0.2s ease; }
+  .send-btn:disabled { opacity: 0.4; cursor: default; }
+  @media (max-width: 520px) { .log { padding: 0 16px 20px; } .composer { padding: 10px 14px 16px; } }
+  /* quota modal */
+  .modal-wrap { position: fixed; inset: 0; z-index: 40; display: none; align-items: center; justify-content: center; padding: 24px; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); }
+  .modal-wrap.show { display: flex; }
+  .modal { background: #0f1119; border: 1px solid rgba(201,164,100,0.25); border-radius: 12px; max-width: 440px; width: 100%; padding: 28px 24px; text-align: center; }
+  .modal-icon { font-size: 28px; margin-bottom: 10px; }
+  .modal h2 { font-family: var(--font-display); font-style: italic; font-weight: 400; font-size: 22px; color: var(--moon); margin: 0 0 8px; }
+  .modal p { color: var(--mist); font-size: 13px; line-height: 1.6; margin: 0 0 20px; }
+  .modal p a { color: var(--gold); text-decoration: none; }
+  .modal p a:hover { text-decoration: underline; }
+  .modal input { width: 100%; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; color: var(--moon); font-family: var(--font-body); font-size: 14px; padding: 12px 14px; outline: none; transition: border-color 0.2s; margin-bottom: 6px; }
+  .modal input:focus { border-color: var(--gold-dim); }
+  .modal-error { font-size: 11.5px; color: #c97a7a; min-height: 16px; margin-bottom: 14px; }
+  .modal-btns { display: flex; gap: 10px; justify-content: center; }
+  .modal-save { background: var(--gold); color: var(--void-deep); border: none; padding: 10px 24px; border-radius: 8px; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer; transition: opacity 0.2s; }
+  .modal-save:hover { opacity: 0.85; }
+  .modal-cancel { background: none; border: 1px solid rgba(139,147,167,0.3); color: var(--mist); padding: 10px 20px; border-radius: 8px; font-size: 12px; letter-spacing: 1px; cursor: pointer; transition: border-color 0.2s, color 0.2s; }
+  .modal-cancel:hover { border-color: var(--mist); color: var(--moon); }
+</style>
+</head>
+<body>
+<div class="bg-layer active" id="bgA"></div>
+<div class="bg-layer" id="bgB"></div>
+<div class="bg-vignette"></div>
+
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-head">
+    <span class="sidebar-label">Your Stories</span>
+    <button class="sidebar-x" id="sidebarClose">✕</button>
+  </div>
+  <button class="sidebar-new-btn" id="sidebarNew">+ New Story</button>
+  <div class="sidebar-list" id="sidebarList"></div>
+</div>
+<div class="sidebar-backdrop" id="backdrop"></div>
+
+<!-- Setup screen -->
+<div class="screen" id="setup">
+  <div class="card">
+    <div class="setup-mark">✦ Loomtale ✦</div>
+    <h1>What story do you want to step into?</h1>
+    <p>Describe the world, the role you'll play, the mood you're after. The story will unfold around you, one thread at a time.</p>
+    <textarea id="premise" placeholder="A noir mystery in 1940s Los Angeles. I play a private detective investigating the disappearance of a jazz singer. Make it moody and slow-burning."></textarea>
+    <br>
+    <button class="btn" id="beginBtn">Begin the story</button>
+  </div>
+</div>
+
+<!-- Story app -->
+<div class="app" id="app">
+  <div class="topbar">
+    <button class="burger-btn" id="burgerBtn">☰</button>
+    <div class="topbar-title">✦ Loomtale</div>
+    <div class="scene-chip" id="sceneChip"></div>
+    <button class="ghost-btn" id="newStoryBtn">+ New</button>
+  </div>
+  <div class="log-wrap">
+    <div class="log" id="log"></div>
+  </div>
+  <div class="composer">
+    <div class="composer-inner">
+      <textarea id="input" placeholder="Say or do something..." rows="1"></textarea>
+      <button class="send-btn" id="sendBtn">Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- Quota modal -->
+<div class="modal-wrap" id="quotaModal">
+  <div class="modal">
+    <div class="modal-icon">✦</div>
+    <h2>The free limit has been reached</h2>
+    <p>You've used up the shared free quota. The good news — you can get your own free Gemini API key and keep going instantly.<br><br>
+    <a href="https://aistudio.google.com/apikey" target="_blank">Get a free key at Google AI Studio →</a></p>
+    <input type="password" id="quotaKeyInput" placeholder="Paste your AIza... key here" autocomplete="off" />
+    <div class="modal-error" id="quotaKeyError"></div>
+    <div class="modal-btns">
+      <button class="modal-save" id="quotaSaveBtn">Save &amp; Continue</button>
+      <button class="modal-cancel" id="quotaCancelBtn">Not now</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
