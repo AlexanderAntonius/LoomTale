@@ -347,7 +347,7 @@ STORYTELLING RULES — these define the quality of the experience:
   }
 
   // ── Gemini API ─────────────────────────────────────────────────────────────
-  const DEFAULT_KEY = atob('QVEuQWI4Uk42SW1wTVFxdEN1dHNiV1F6SGN2Z1JSdzRuUEhQdXNVb01XSDE5bUhpU21SYkE=');
+  const DEFAULT_KEY = atob('QVEuQWI4Uk42S1JVS05HUm9qZlpYdnJBV1JiZld1MlNicld3YlZLdTlURnFDMEgwemQ4TWc=');
 
   function getActiveKey() {
     const k = localStorage.getItem('loomtale_user_key');
