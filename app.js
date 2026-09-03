@@ -29,14 +29,14 @@
 
   // ── Mood gradients ─────────────────────────────────────────────────────────
   const moodGradients = {
-    calm:       'linear-gradient(160deg, #16222a, #08090f)',
-    tense:      'linear-gradient(160deg, #2a1414, #08090f)',
-    romantic:   'linear-gradient(160deg, #2a1522, #100a12)',
-    eerie:      'linear-gradient(160deg, #131f18, #06090a)',
-    joyful:     'linear-gradient(160deg, #2a2013, #14100a)',
-    melancholy: 'linear-gradient(160deg, #141626, #08090f)',
-    mysterious: 'linear-gradient(160deg, #1c1430, #08090f)',
-    neutral:    'linear-gradient(160deg, #161822, #08090f)'
+    calm:       'linear-gradient(160deg, #1b3a4b, #0d1b2a, #08090f)',
+    tense:      'linear-gradient(160deg, #4a121a, #2b080c, #08090f)',
+    romantic:   'linear-gradient(160deg, #4a1936, #280c1d, #08090f)',
+    eerie:      'linear-gradient(160deg, #133320, #0a1f13, #08090f)',
+    joyful:     'linear-gradient(160deg, #4a3010, #2b1a08, #08090f)',
+    melancholy: 'linear-gradient(160deg, #1e264a, #0f1328, #08090f)',
+    mysterious: 'linear-gradient(160deg, #2d164d, #170a2b, #08090f)',
+    neutral:    'linear-gradient(160deg, #1f2433, #0d0f1a, #08090f)'
   };
 
   // ── System prompt ──────────────────────────────────────────────────────────
