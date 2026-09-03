@@ -254,9 +254,27 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
     else showScreen('setup');
   }
 
-  // ── Background mood ────────────────────────────────────────────────────────
+  // ── Background & UI mood ───────────────────────────────────────────────────
+  const moodColors = {
+    calm:       { accent: '#5fa3a0', border: 'rgba(95, 163, 160, 0.4)', panel: 'rgba(95, 163, 160, 0.08)', shadow: 'rgba(95, 163, 160, 0.18)' },
+    tense:      { accent: '#c97a7a', border: 'rgba(201, 122, 122, 0.4)', panel: 'rgba(201, 122, 122, 0.08)', shadow: 'rgba(201, 122, 122, 0.18)' },
+    romantic:   { accent: '#c97a91', border: 'rgba(201, 122, 145, 0.4)', panel: 'rgba(201, 122, 145, 0.08)', shadow: 'rgba(201, 122, 145, 0.18)' },
+    eerie:      { accent: '#7fa088', border: 'rgba(127, 160, 136, 0.4)', panel: 'rgba(127, 160, 136, 0.08)', shadow: 'rgba(127, 160, 136, 0.18)' },
+    joyful:     { accent: '#cf7a4a', border: 'rgba(207, 122, 74, 0.4)', panel: 'rgba(207, 122, 74, 0.08)', shadow: 'rgba(207, 122, 74, 0.18)' },
+    melancholy: { accent: '#7196c9', border: 'rgba(113, 150, 201, 0.4)', panel: 'rgba(113, 150, 201, 0.08)', shadow: 'rgba(113, 150, 201, 0.18)' },
+    mysterious: { accent: '#8079c9', border: 'rgba(128, 121, 201, 0.4)', panel: 'rgba(128, 121, 201, 0.08)', shadow: 'rgba(128, 121, 201, 0.18)' },
+    neutral:    { accent: '#c9a464', border: 'rgba(201, 164, 100, 0.25)', panel: 'rgba(237, 230, 211, 0.04)', shadow: 'rgba(0, 0, 0, 0.2)' }
+  };
+
   function setMood(mood) {
     if (currentStory) currentStory.lastMood = mood;
+    const colors = moodColors[mood] || moodColors.neutral;
+    const root = document.documentElement.style;
+    root.setProperty('--mood-accent', colors.accent);
+    root.setProperty('--mood-border', colors.border);
+    root.setProperty('--mood-panel', colors.panel);
+    root.setProperty('--mood-shadow', colors.shadow);
+
     if (isReplaying) return;
     const gradient = moodGradients[mood] || moodGradients.neutral;
     const incoming = bgActiveIsA ? bgB : bgA;
