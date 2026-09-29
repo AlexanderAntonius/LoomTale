@@ -490,8 +490,8 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
 
   document.getElementById('quotaSaveBtn').addEventListener('click', () => {
     const val = document.getElementById('quotaKeyInput').value.trim();
-    if (!val.startsWith('AIza')) {
-      document.getElementById('quotaKeyError').textContent = "Google AI keys start with AIza — check and try again.";
+    if (!val || val.length < 15) {
+      document.getElementById('quotaKeyError').textContent = "Please enter a valid Gemini API key.";
       return;
     }
     localStorage.setItem('loomtale_user_key', val);
