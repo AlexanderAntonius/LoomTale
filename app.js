@@ -175,7 +175,7 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
     } catch { /* fail silently */ }
   }
 
-  // ── Incremental Memory Digest ──────────────────────────────────────────────
+  // ── Incremental & Full Memory Digest ──────────────────────────────────────────────
   async function doIncrementalDigest(manualTrigger = false) {
     if (!currentStory) return;
     const startIdx = currentStory.lastDigestedIndex || 0;
@@ -237,10 +237,21 @@ Reply with ONLY raw JSON, no markdown formatting or markdown codeblocks.`;
       console.warn('Incremental digest notice:', e);
     } finally {
       if (manualTrigger) {
-        nbDigestBtn.textContent = "📌 Update & Save Digest";
+        nbDigestBtn.textContent = "📌 Update New Turns";
         renderNotebookModal();
       }
     }
+  }
+
+  async function doFullReDigest() {
+    if (!currentStory) return;
+    if (!confirm("Re-digest entire story from Turn 1? This will refresh all memory facts from scratch.")) return;
+    const reBtn = document.getElementById('nbReDigestBtn');
+    if (reBtn) reBtn.textContent = "⏳ Re-Digesting All...";
+    currentStory.lastDigestedIndex = 0;
+    currentStory.memoryDigest = { summary: '', physicalConditions: [], keyEvents: [], inventory: [], charactersMet: [] };
+    await doIncrementalDigest(true);
+    if (reBtn) reBtn.textContent = "🔄 Re-Digest Full Story";
   }
 
   // ── Sidebar ────────────────────────────────────────────────────────────────
@@ -725,6 +736,7 @@ Reply with ONLY raw JSON, no markdown formatting or markdown codeblocks.`;
   notebookBtn.addEventListener('click', openNotebook);
   nbCloseBtn.addEventListener('click', closeNotebook);
   nbDigestBtn.addEventListener('click', () => doIncrementalDigest(true));
+  document.getElementById('nbReDigestBtn')?.addEventListener('click', doFullReDigest);
 
   versionBtn.addEventListener('click', () => changelogModal.classList.add('show'));
   clCloseBtn.addEventListener('click', () => changelogModal.classList.remove('show'));
