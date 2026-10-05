@@ -1,26 +1,42 @@
 (function () {
   // ── Constants ──────────────────────────────────────────────────────────────
+  const DEFAULT_KEY = atob('QVEuQWI4Uk42S1JVS05HUm9qZlpYdnJBV1JiZld1MlNicld3YlZLdTlURnFDMEgwemQ4TWc=');
   const MODEL       = 'gemini-3.5-flash-lite';
   const STORAGE_KEY = 'loomtale_stories';
+  const VERSION     = 'v1.2.0';
 
   // ── DOM ────────────────────────────────────────────────────────────────────
-  const sidebarEl    = document.getElementById('sidebar');
-  const backdropEl   = document.getElementById('backdrop');
-  const sidebarListEl= document.getElementById('sidebarList');
+  const sidebarEl       = document.getElementById('sidebar');
+  const backdropEl      = document.getElementById('backdrop');
+  const sidebarListEl   = document.getElementById('sidebarList');
   const sidebarCloseBtn = document.getElementById('sidebarClose');
   const sidebarNewBtn   = document.getElementById('sidebarNew');
-  const burgerBtn    = document.getElementById('burgerBtn');
-  const newStoryBtn  = document.getElementById('newStoryBtn');
-  const setupEl      = document.getElementById('setup');
-  const appEl        = document.getElementById('app');
-  const premiseEl    = document.getElementById('premise');
-  const beginBtn     = document.getElementById('beginBtn');
-  const logEl        = document.getElementById('log');
-  const inputEl      = document.getElementById('input');
-  const sendBtn      = document.getElementById('sendBtn');
-  const sceneChipEl  = document.getElementById('sceneChip');
-  const bgA          = document.getElementById('bgA');
-  const bgB          = document.getElementById('bgB');
+  const burgerBtn       = document.getElementById('burgerBtn');
+  const setupBurgerBtn  = document.getElementById('setupBurgerBtn');
+  const newStoryBtn     = document.getElementById('newStoryBtn');
+  const notebookBtn     = document.getElementById('notebookBtn');
+  const versionBtn      = document.getElementById('versionBtn');
+  const setupEl         = document.getElementById('setup');
+  const appEl           = document.getElementById('app');
+  const premiseEl       = document.getElementById('premise');
+  const beginBtn        = document.getElementById('beginBtn');
+  const logEl           = document.getElementById('log');
+  const inputEl         = document.getElementById('input');
+  const sendBtn         = document.getElementById('sendBtn');
+  const sceneChipEl     = document.getElementById('sceneChip');
+  const bgA             = document.getElementById('bgA');
+  const bgB             = document.getElementById('bgB');
+
+  // Notebook modal DOM
+  const notebookModal   = document.getElementById('notebookModal');
+  const nbTitle         = document.getElementById('nbTitle');
+  const nbBody          = document.getElementById('nbBody');
+  const nbDigestBtn     = document.getElementById('nbDigestBtn');
+  const nbCloseBtn      = document.getElementById('nbCloseBtn');
+
+  // Changelog modal DOM
+  const changelogModal  = document.getElementById('changelogModal');
+  const clCloseBtn      = document.getElementById('clCloseBtn');
 
   // ── State ──────────────────────────────────────────────────────────────────
   let currentStory = null;
@@ -114,6 +130,13 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
       title: 'Untitled Story',
       premise,
       history: [],
+      lastDigestedIndex: 0,
+      memoryDigest: {
+        summary: '',
+        keyEvents: [],
+        inventory: [],
+        charactersMet: []
+      },
       charColors: {},
       colorIdx: 0,
       lastMood: 'neutral',
@@ -145,12 +168,76 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
       const data = await res.json();
       const title = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
       if (!title) return;
-      // Update in storage regardless of which story is active now
       const story = Storage.get(storyId);
       if (story) { story.title = title; Storage.save(story); }
       if (currentStory && currentStory.id === storyId) currentStory.title = title;
       Sidebar.render();
-    } catch { /* silently fail, title stays Untitled */ }
+    } catch { /* fail silently */ }
+  }
+
+  // ── Incremental Memory Digest ──────────────────────────────────────────────
+  async function doIncrementalDigest(manualTrigger = false) {
+    if (!currentStory) return;
+    const startIdx = currentStory.lastDigestedIndex || 0;
+    const newTurns = currentStory.history.slice(startIdx);
+    if (newTurns.length === 0 && !manualTrigger) return;
+
+    if (manualTrigger) nbDigestBtn.textContent = "⏳ Updating Digest...";
+
+    try {
+      const existingMemText = JSON.stringify(currentStory.memoryDigest || {});
+      const newTurnsText = newTurns.map(t => `${t.role.toUpperCase()}: ${t.content}`).join('\n\n');
+
+      const prompt = `Analyze this story context and update the Memory Digest JSON.
+EXISTING MEMORY DIGEST:
+${existingMemText}
+
+NEW UNPROCESSED TURNS (from turn ${startIdx + 1} to ${currentStory.history.length}):
+${newTurnsText}
+
+Update and return ONLY a valid JSON object with these 4 keys:
+{
+  "summary": "Concise summary of narrative events so far (2-4 sentences)",
+  "keyEvents": ["Bullet point of important event 1", "Bullet point of important event 2"],
+  "inventory": ["Item name and state (e.g. Broken wooden pencil)"],
+  "charactersMet": ["Character name and relationship/status"]
+}
+Reply with ONLY raw JSON, no markdown formatting or markdown codeblocks.`;
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${getActiveKey()}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 600 }
+          })
+        }
+      );
+      const data = await res.json();
+      let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      rawText = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```$/, '').trim();
+
+      const parsed = JSON.parse(rawText);
+      if (parsed && typeof parsed === 'object') {
+        currentStory.memoryDigest = {
+          summary: parsed.summary || currentStory.memoryDigest?.summary || '',
+          keyEvents: Array.isArray(parsed.keyEvents) ? parsed.keyEvents : [],
+          inventory: Array.isArray(parsed.inventory) ? parsed.inventory : [],
+          charactersMet: Array.isArray(parsed.charactersMet) ? parsed.charactersMet : []
+        };
+        currentStory.lastDigestedIndex = currentStory.history.length;
+        autosave();
+      }
+    } catch (e) {
+      console.warn('Incremental digest notice:', e);
+    } finally {
+      if (manualTrigger) {
+        nbDigestBtn.textContent = "📌 Update & Save Digest";
+        renderNotebookModal();
+      }
+    }
   }
 
   // ── Sidebar ────────────────────────────────────────────────────────────────
@@ -214,35 +301,30 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
     const story = Storage.get(id);
     if (!story) return;
     currentStory = story;
+    if (!currentStory.memoryDigest) {
+      currentStory.memoryDigest = { summary: '', keyEvents: [], inventory: [], charactersMet: [] };
+    }
+    if (typeof currentStory.lastDigestedIndex !== 'number') {
+      currentStory.lastDigestedIndex = 0;
+    }
+
     Sidebar.close();
     showScreen('app');
 
-    // Clear log and restore scene chip
     logEl.innerHTML = '';
     sceneChipEl.textContent = story.lastScene
       ? story.lastMood + ' \u00b7 ' + story.lastScene
       : story.lastMood || '';
 
-    // Restore background (instant, no transition)
-    const gradient = moodGradients[story.lastMood] || moodGradients.neutral;
-    const incoming = bgActiveIsA ? bgB : bgA;
-    const outgoing = bgActiveIsA ? bgA : bgB;
-    incoming.style.background = gradient;
-    incoming.style.transition = 'none';
-    incoming.classList.add('active');
-    outgoing.classList.remove('active');
-    bgActiveIsA = !bgActiveIsA;
-    setTimeout(() => { incoming.style.transition = ''; }, 50);
+    setMood(story.lastMood || 'neutral');
 
-    // Replay history without animations
     isReplaying = true;
-    story.history.forEach(msg => {
-      if (msg.role === 'user') addYouEntry(msg.content);
-      else parseAndRender(msg.content);
+    story.history.forEach((msg, idx) => {
+      if (msg.role === 'user') addYouEntry(msg.content, idx);
+      else parseAndRender(msg.content, idx);
     });
     isReplaying = false;
 
-    // Scroll to bottom
     const wrap = document.querySelector('.log-wrap');
     wrap.scrollTop = wrap.scrollHeight;
   }
@@ -316,12 +398,26 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
     w.scrollTop = w.scrollHeight;
   }
 
-  function addYouEntry(text) {
+  function addYouEntry(text, msgIdx) {
     const div = document.createElement('div');
     div.className = 'entry' + (isReplaying ? ' no-anim' : '');
-    div.innerHTML = '<div class="you-row"><div style="max-width:80%"><div class="you-label">You</div><div class="you-bubble"></div></div></div>';
+    div.dataset.msgIdx = typeof msgIdx === 'number' ? msgIdx : (currentStory ? currentStory.history.length - 1 : 0);
+    div.innerHTML =
+      '<div class="you-row">' +
+        '<div style="max-width:80%">' +
+          '<div class="you-label">You</div>' +
+          '<div class="you-bubble"></div>' +
+          '<div class="entry-actions" style="justify-content:flex-end;">' +
+            '<button class="act-btn copy-btn" title="Copy text">📋 Copy</button>' +
+            '<button class="act-btn edit-btn" title="Edit message & regenerate">✏️ Edit</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
     div.querySelector('.you-bubble').textContent = text;
-    logEl.appendChild(div); scrollBottom();
+    attachEntryEvents(div, text);
+    logEl.appendChild(div);
+    scrollBottom();
+    return div;
   }
 
   function addSceneMarker(mood, setting) {
@@ -335,23 +431,85 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
     return div;
   }
 
-  function addNarration(text) {
+  function addNarration(text, msgIdx) {
     const div = document.createElement('div');
     div.className = 'entry' + (isReplaying ? ' no-anim' : '');
-    div.innerHTML = '<div class="narration"></div>';
+    div.dataset.msgIdx = typeof msgIdx === 'number' ? msgIdx : (currentStory ? currentStory.history.length - 1 : 0);
+    div.innerHTML =
+      '<div class="narration"></div>' +
+      '<div class="entry-actions">' +
+        '<button class="act-btn copy-btn" title="Copy text">📋 Copy</button>' +
+        '<button class="act-btn edit-btn" title="Edit text">✏️ Edit</button>' +
+      '</div>';
     div.querySelector('.narration').textContent = text;
-    logEl.appendChild(div); scrollBottom();
+    attachEntryEvents(div, text);
+    logEl.appendChild(div);
+    scrollBottom();
     return div;
   }
 
-  function addCharacter(name, text) {
+  function addCharacter(name, text, msgIdx) {
     const color = colorFor(name);
     const div = document.createElement('div');
     div.className = 'entry' + (isReplaying ? ' no-anim' : '');
-    div.innerHTML = '<div class="char-row"><div class="avatar" style="background:var(--' + color + ')">' + name.charAt(0).toUpperCase() + '</div><div class="char-body"><div class="char-name" style="color:var(--' + color + ')">' + escapeHtml(name) + '</div><div class="bubble"></div></div></div>';
+    div.dataset.msgIdx = typeof msgIdx === 'number' ? msgIdx : (currentStory ? currentStory.history.length - 1 : 0);
+    div.innerHTML =
+      '<div class="char-row">' +
+        '<div class="avatar" style="background:var(--' + color + ')">' + name.charAt(0).toUpperCase() + '</div>' +
+        '<div class="char-body">' +
+          '<div class="char-name" style="color:var(--' + color + ')">' + escapeHtml(name) + '</div>' +
+          '<div class="bubble"></div>' +
+          '<div class="entry-actions">' +
+            '<button class="act-btn copy-btn" title="Copy text">📋 Copy</button>' +
+            '<button class="act-btn edit-btn" title="Edit text">✏️ Edit</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
     div.querySelector('.bubble').textContent = text;
-    logEl.appendChild(div); scrollBottom();
+    attachEntryEvents(div, text);
+    logEl.appendChild(div);
+    scrollBottom();
     return div;
+  }
+
+  function attachEntryEvents(entryEl, rawText) {
+    const copyBtn = entryEl.querySelector('.copy-btn');
+    const editBtn = entryEl.querySelector('.edit-btn');
+
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(rawText).then(() => {
+          copyBtn.textContent = '✓ Copied';
+          setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 1500);
+        });
+      });
+    }
+
+    if (editBtn) {
+      editBtn.addEventListener('click', () => {
+        const msgIdx = parseInt(entryEl.dataset.msgIdx, 10);
+        if (isNaN(msgIdx) || !currentStory || !currentStory.history[msgIdx]) return;
+
+        const isUser = currentStory.history[msgIdx].role === 'user';
+        const newText = prompt(isUser ? "Edit your response (this will regenerate the story from here):" : "Edit AI text:", currentStory.history[msgIdx].content);
+
+        if (newText === null || newText.trim() === '') return;
+
+        if (isUser) {
+          currentStory.history = currentStory.history.slice(0, msgIdx);
+          if (currentStory.lastDigestedIndex > msgIdx) {
+            currentStory.lastDigestedIndex = msgIdx;
+          }
+          autosave();
+          loadStory(currentStory.id);
+          sendTurn(newText.trim());
+        } else {
+          currentStory.history[msgIdx].content = newText.trim();
+          autosave();
+          loadStory(currentStory.id);
+        }
+      });
+    }
   }
 
   let thinkingEl = null;
@@ -363,7 +521,7 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
   }
   function hideThinking() { if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; } }
 
-  function parseAndRender(raw) {
+  function parseAndRender(raw, msgIdx) {
     let firstNode = null;
     let text = raw.trim();
     const sm = text.match(/^\[SCENE:\s*([^,\]]+)\s*(?:,\s*([^\]]+))?\]\s*/i);
@@ -388,8 +546,8 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
       const t = seg.text.trim();
       if (!t) return;
       let el;
-      if (seg.speaker.toUpperCase() === 'NARRATOR') el = addNarration(t);
-      else el = addCharacter(seg.speaker, t);
+      if (seg.speaker.toUpperCase() === 'NARRATOR') el = addNarration(t, msgIdx);
+      else el = addCharacter(seg.speaker, t, msgIdx);
       if (!firstNode) firstNode = el;
     });
 
@@ -400,9 +558,7 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
     }
   }
 
-  // ── Gemini API ─────────────────────────────────────────────────────────────
-  const DEFAULT_KEY = atob('QVEuQWI4Uk42S1JVS05HUm9qZlpYdnJBV1JiZld1MlNicld3YlZLdTlURnFDMEgwemQ4TWc=');
-
+  // ── Gemini API with Sliding Window & Memory Digest ─────────────────────────
   function getActiveKey() {
     const k = localStorage.getItem('loomtale_user_key');
     return (k && k.trim()) ? k.trim() : DEFAULT_KEY;
@@ -415,17 +571,44 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
 
   async function callGemini() {
     const key = getActiveKey();
-    const contents = currentStory.history.map(msg => ({
+    if (!key) {
+      const err = new Error("No API key configured");
+      err.isQuota = true;
+      throw err;
+    }
+
+    let contents = [];
+    const hist = currentStory.history;
+    const mem = currentStory.memoryDigest;
+
+    let sysPrompt = SYSTEM_PROMPT;
+
+    if (mem && (mem.summary || (mem.keyEvents && mem.keyEvents.length))) {
+      const memContext =
+        `\n\n=== STORY MEMORY DIGEST (FACTS & HISTORY SO FAR) ===\n` +
+        (mem.summary ? `SUMMARY: ${mem.summary}\n` : '') +
+        (mem.keyEvents && mem.keyEvents.length ? `KEY EVENTS:\n- ${mem.keyEvents.join('\n- ')}\n` : '') +
+        (mem.inventory && mem.inventory.length ? `INVENTORY/ITEMS:\n- ${mem.inventory.join('\n- ')}\n` : '') +
+        (mem.charactersMet && mem.charactersMet.length ? `CHARACTERS MET:\n- ${mem.charactersMet.join('\n- ')}\n` : '');
+
+      sysPrompt += memContext;
+    }
+
+    const WINDOW_SIZE = 15;
+    const slicedHist = hist.length > WINDOW_SIZE ? hist.slice(hist.length - WINDOW_SIZE) : hist;
+
+    contents = slicedHist.map(msg => ({
       role: msg.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: msg.content }]
     }));
+
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          system_instruction: { parts: [{ text: sysPrompt }] },
           contents,
           generationConfig: { maxOutputTokens: 1000 }
         })
@@ -444,7 +627,7 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
   async function sendTurn(userText) {
     if (userText) {
       currentStory.history.push({ role: 'user', content: userText });
-      addYouEntry(userText);
+      addYouEntry(userText, currentStory.history.length - 1);
     }
     sendBtn.disabled = true; inputEl.disabled = true;
     showThinking();
@@ -452,11 +635,16 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
       const reply = await callGemini();
       hideThinking();
       currentStory.history.push({ role: 'assistant', content: reply });
-      parseAndRender(reply);
+      parseAndRender(reply, currentStory.history.length - 1);
       autosave();
-      // Generate AI title after first exchange
+
       if (currentStory.history.length === 2 && currentStory.title === 'Untitled Story') {
         generateTitle(currentStory.premise, currentStory.id);
+      }
+
+      const unDigested = currentStory.history.length - (currentStory.lastDigestedIndex || 0);
+      if (unDigested >= 20) {
+        doIncrementalDigest(false);
       }
     } catch (err) {
       hideThinking();
@@ -468,6 +656,44 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
       console.error(err);
     }
     sendBtn.disabled = false; inputEl.disabled = false;
+  }
+
+  // ── Notebook Modal logic ───────────────────────────────────────────────────
+  function renderNotebookModal() {
+    if (!currentStory) return;
+    const mem = currentStory.memoryDigest || {};
+    const unDigested = currentStory.history.length - (currentStory.lastDigestedIndex || 0);
+
+    nbTitle.textContent = `Story Memory & Digest (${currentStory.title})`;
+
+    let html = '';
+    html += `<h4>Summary</h4><p>${escapeHtml(mem.summary || 'No summary generated yet.')}</p>`;
+
+    if (mem.keyEvents && mem.keyEvents.length) {
+      html += `<h4>Key Events</h4><ul>` + mem.keyEvents.map(e => `<li>${escapeHtml(e)}</li>`).join('') + `</ul>`;
+    }
+
+    if (mem.inventory && mem.inventory.length) {
+      html += `<h4>Inventory &amp; Items</h4><ul>` + mem.inventory.map(i => `<li>${escapeHtml(i)}</li>`).join('') + `</ul>`;
+    }
+
+    if (mem.charactersMet && mem.charactersMet.length) {
+      html += `<h4>Characters Met</h4><ul>` + mem.charactersMet.map(c => `<li>${escapeHtml(c)}</li>`).join('') + `</ul>`;
+    }
+
+    html += `<p style="font-size:11px; opacity:0.6; margin-top:14px; text-align:center;">Unprocessed new turns: ${unDigested} turn(s)</p>`;
+
+    nbBody.innerHTML = html;
+  }
+
+  function openNotebook() {
+    if (!currentStory) return;
+    renderNotebookModal();
+    notebookModal.classList.add('show');
+  }
+
+  function closeNotebook() {
+    notebookModal.classList.remove('show');
   }
 
   // ── Quota modal ────────────────────────────────────────────────────────────
@@ -482,11 +708,18 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
 
   // ── Events ─────────────────────────────────────────────────────────────────
   burgerBtn.addEventListener('click', () => Sidebar.open());
-  document.getElementById('setupBurgerBtn')?.addEventListener('click', () => Sidebar.open());
+  setupBurgerBtn?.addEventListener('click', () => Sidebar.open());
   sidebarCloseBtn.addEventListener('click', () => Sidebar.close());
   backdropEl.addEventListener('click', () => Sidebar.close());
   sidebarNewBtn.addEventListener('click', goToSetup);
   newStoryBtn.addEventListener('click', goToSetup);
+
+  notebookBtn.addEventListener('click', openNotebook);
+  nbCloseBtn.addEventListener('click', closeNotebook);
+  nbDigestBtn.addEventListener('click', () => doIncrementalDigest(true));
+
+  versionBtn.addEventListener('click', () => changelogModal.classList.add('show'));
+  clCloseBtn.addEventListener('click', () => changelogModal.classList.remove('show'));
 
   document.getElementById('quotaSaveBtn').addEventListener('click', () => {
     const val = document.getElementById('quotaKeyInput').value.trim();
