@@ -195,13 +195,15 @@ ${existingMemText}
 NEW UNPROCESSED TURNS (from turn ${startIdx + 1} to ${currentStory.history.length}):
 ${newTurnsText}
 
-Update and return ONLY a valid JSON object with these 4 keys:
+Update and return ONLY a valid JSON object with these 5 keys:
 {
-  "summary": "Concise summary of narrative events so far (2-4 sentences)",
-  "keyEvents": ["Bullet point of important event 1", "Bullet point of important event 2"],
-  "inventory": ["Item name and state (e.g. Broken wooden pencil)"],
-  "charactersMet": ["Character name and relationship/status"]
+  "summary": "Detailed narrative summary of major plot developments (3-5 sentences)",
+  "physicalConditions": ["Critical physical states, health conditions, poisons, injuries, or illnesses affecting the main character or NPCs (e.g. Character is poisoned by nightshade, Character has wounded left shoulder)"],
+  "keyEvents": ["Bullet point of important event, secret revealed, or decision"],
+  "inventory": ["Item name and state (e.g. Broken wooden pencil, Vial of antidote)"],
+  "charactersMet": ["Character name, status, and relationship to main character"]
 }
+CRITICAL: Pay extreme attention to any physical states, health status, poisons, injuries, or medical conditions mentioned in the story. They MUST be preserved.
 Reply with ONLY raw JSON, no markdown formatting or markdown codeblocks.`;
 
       const res = await fetch(
@@ -211,7 +213,7 @@ Reply with ONLY raw JSON, no markdown formatting or markdown codeblocks.`;
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 600 }
+            generationConfig: { maxOutputTokens: 800 }
           })
         }
       );
@@ -223,6 +225,7 @@ Reply with ONLY raw JSON, no markdown formatting or markdown codeblocks.`;
       if (parsed && typeof parsed === 'object') {
         currentStory.memoryDigest = {
           summary: parsed.summary || currentStory.memoryDigest?.summary || '',
+          physicalConditions: Array.isArray(parsed.physicalConditions) ? parsed.physicalConditions : (currentStory.memoryDigest?.physicalConditions || []),
           keyEvents: Array.isArray(parsed.keyEvents) ? parsed.keyEvents : [],
           inventory: Array.isArray(parsed.inventory) ? parsed.inventory : [],
           charactersMet: Array.isArray(parsed.charactersMet) ? parsed.charactersMet : []
@@ -583,18 +586,19 @@ Reply with ONLY raw JSON, no markdown formatting or markdown codeblocks.`;
 
     let sysPrompt = SYSTEM_PROMPT;
 
-    if (mem && (mem.summary || (mem.keyEvents && mem.keyEvents.length))) {
+    if (mem && (mem.summary || (mem.keyEvents && mem.keyEvents.length) || (mem.physicalConditions && mem.physicalConditions.length))) {
       const memContext =
-        `\n\n=== STORY MEMORY DIGEST (FACTS & HISTORY SO FAR) ===\n` +
+        `\n\n=== STORY MEMORY DIGEST (CRITICAL FACTS & HISTORY) ===\n` +
         (mem.summary ? `SUMMARY: ${mem.summary}\n` : '') +
-        (mem.keyEvents && mem.keyEvents.length ? `KEY EVENTS:\n- ${mem.keyEvents.join('\n- ')}\n` : '') +
+        (mem.physicalConditions && mem.physicalConditions.length ? `PHYSICAL/HEALTH/POISON CONDITIONS:\n- ${mem.physicalConditions.join('\n- ')}\n` : '') +
+        (mem.keyEvents && mem.keyEvents.length ? `KEY EVENTS & SECRETS:\n- ${mem.keyEvents.join('\n- ')}\n` : '') +
         (mem.inventory && mem.inventory.length ? `INVENTORY/ITEMS:\n- ${mem.inventory.join('\n- ')}\n` : '') +
         (mem.charactersMet && mem.charactersMet.length ? `CHARACTERS MET:\n- ${mem.charactersMet.join('\n- ')}\n` : '');
 
       sysPrompt += memContext;
     }
 
-    const WINDOW_SIZE = 15;
+    const WINDOW_SIZE = 60;
     const slicedHist = hist.length > WINDOW_SIZE ? hist.slice(hist.length - WINDOW_SIZE) : hist;
 
     contents = slicedHist.map(msg => ({
@@ -669,8 +673,12 @@ Reply with ONLY raw JSON, no markdown formatting or markdown codeblocks.`;
     let html = '';
     html += `<h4>Summary</h4><p>${escapeHtml(mem.summary || 'No summary generated yet.')}</p>`;
 
+    if (mem.physicalConditions && mem.physicalConditions.length) {
+      html += `<h4>Health &amp; Physical Conditions</h4><ul>` + mem.physicalConditions.map(p => `<li>${escapeHtml(p)}</li>`).join('') + `</ul>`;
+    }
+
     if (mem.keyEvents && mem.keyEvents.length) {
-      html += `<h4>Key Events</h4><ul>` + mem.keyEvents.map(e => `<li>${escapeHtml(e)}</li>`).join('') + `</ul>`;
+      html += `<h4>Key Events &amp; Secrets</h4><ul>` + mem.keyEvents.map(e => `<li>${escapeHtml(e)}</li>`).join('') + `</ul>`;
     }
 
     if (mem.inventory && mem.inventory.length) {
