@@ -175,6 +175,59 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
     } catch { /* fail silently */ }
   }
 
+  // ── Chunked Digest Engine & Safety Backup ─────────────────────────────────────
+  async function processDigestChunk(existingMem, turnsChunk, chunkLabel) {
+    const existingMemText = JSON.stringify(existingMem || {});
+    const turnsText = turnsChunk.map(t => `${t.role.toUpperCase()}: ${t.content}`).join('\n\n');
+
+    const prompt = `Analyze this story context and update the Memory Digest JSON.
+EXISTING CUMULATIVE MEMORY DIGEST:
+${existingMemText}
+
+NEW TURNS TO INTEGRATE (${chunkLabel}):
+${turnsText}
+
+Update and return ONLY a valid JSON object with these 5 keys:
+{
+  "summary": "Comprehensive narrative summary of plot developments so far (3-6 sentences)",
+  "physicalConditions": ["Critical physical states, health conditions, poisons, injuries, or illnesses affecting the main character or NPCs (e.g. Character is poisoned by nightshade, Character has wounded left shoulder)"],
+  "keyEvents": ["Bullet point of important event, secret revealed, or decision"],
+  "inventory": ["Item name and state (e.g. Broken wooden pencil, Vial of antidote)"],
+  "charactersMet": ["Character name, status, and relationship to main character"]
+}
+CRITICAL RULES:
+1. Pay extreme attention to any physical states, health status, poisons, injuries, or medical conditions. Do NOT drop any ongoing condition unless explicitly cured in the new turns.
+2. Preserve all important past facts while integrating new developments.
+3. Reply with ONLY raw JSON, no markdown codeblocks or extra text.`;
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${getActiveKey()}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 1000 }
+        })
+      }
+    );
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+    rawText = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```$/, '').trim();
+
+    const parsed = JSON.parse(rawText);
+    if (!parsed || typeof parsed !== 'object') throw new Error("Invalid JSON returned from API");
+
+    return {
+      summary: parsed.summary || existingMem.summary || '',
+      physicalConditions: Array.isArray(parsed.physicalConditions) ? parsed.physicalConditions : (existingMem.physicalConditions || []),
+      keyEvents: Array.isArray(parsed.keyEvents) ? parsed.keyEvents : (existingMem.keyEvents || []),
+      inventory: Array.isArray(parsed.inventory) ? parsed.inventory : (existingMem.inventory || []),
+      charactersMet: Array.isArray(parsed.charactersMet) ? parsed.charactersMet : (existingMem.charactersMet || [])
+    };
+  }
+
   // ── Incremental & Full Memory Digest ──────────────────────────────────────────────
   async function doIncrementalDigest(manualTrigger = false) {
     if (!currentStory) return;
@@ -183,58 +236,32 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
     if (newTurns.length === 0 && !manualTrigger) return;
 
     if (manualTrigger) nbDigestBtn.textContent = "⏳ Updating Digest...";
+    const backupMem = JSON.parse(JSON.stringify(currentStory.memoryDigest || {}));
 
     try {
-      const existingMemText = JSON.stringify(currentStory.memoryDigest || {});
-      const newTurnsText = newTurns.map(t => `${t.role.toUpperCase()}: ${t.content}`).join('\n\n');
+      const CHUNK_SIZE = 250;
+      let runningMem = backupMem;
 
-      const prompt = `Analyze this story context and update the Memory Digest JSON.
-EXISTING MEMORY DIGEST:
-${existingMemText}
+      for (let i = 0; i < newTurns.length; i += CHUNK_SIZE) {
+        const chunk = newTurns.slice(i, i + CHUNK_SIZE);
+        const fromTurn = startIdx + i + 1;
+        const toTurn = startIdx + Math.min(i + CHUNK_SIZE, newTurns.length);
+        const chunkLabel = `Turns ${fromTurn} to ${toTurn} (out of ${currentStory.history.length})`;
 
-NEW UNPROCESSED TURNS (from turn ${startIdx + 1} to ${currentStory.history.length}):
-${newTurnsText}
-
-Update and return ONLY a valid JSON object with these 5 keys:
-{
-  "summary": "Detailed narrative summary of major plot developments (3-5 sentences)",
-  "physicalConditions": ["Critical physical states, health conditions, poisons, injuries, or illnesses affecting the main character or NPCs (e.g. Character is poisoned by nightshade, Character has wounded left shoulder)"],
-  "keyEvents": ["Bullet point of important event, secret revealed, or decision"],
-  "inventory": ["Item name and state (e.g. Broken wooden pencil, Vial of antidote)"],
-  "charactersMet": ["Character name, status, and relationship to main character"]
-}
-CRITICAL: Pay extreme attention to any physical states, health status, poisons, injuries, or medical conditions mentioned in the story. They MUST be preserved.
-Reply with ONLY raw JSON, no markdown formatting or markdown codeblocks.`;
-
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${getActiveKey()}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 800 }
-          })
+        if (manualTrigger && newTurns.length > CHUNK_SIZE) {
+          nbDigestBtn.textContent = `⏳ Digesting ${fromTurn}-${toTurn}...`;
         }
-      );
-      const data = await res.json();
-      let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-      rawText = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```$/, '').trim();
 
-      const parsed = JSON.parse(rawText);
-      if (parsed && typeof parsed === 'object') {
-        currentStory.memoryDigest = {
-          summary: parsed.summary || currentStory.memoryDigest?.summary || '',
-          physicalConditions: Array.isArray(parsed.physicalConditions) ? parsed.physicalConditions : (currentStory.memoryDigest?.physicalConditions || []),
-          keyEvents: Array.isArray(parsed.keyEvents) ? parsed.keyEvents : [],
-          inventory: Array.isArray(parsed.inventory) ? parsed.inventory : [],
-          charactersMet: Array.isArray(parsed.charactersMet) ? parsed.charactersMet : []
-        };
-        currentStory.lastDigestedIndex = currentStory.history.length;
-        autosave();
+        runningMem = await processDigestChunk(runningMem, chunk, chunkLabel);
       }
+
+      currentStory.memoryDigest = runningMem;
+      currentStory.lastDigestedIndex = currentStory.history.length;
+      autosave();
     } catch (e) {
-      console.warn('Incremental digest notice:', e);
+      console.warn('Digest processing warning:', e);
+      currentStory.memoryDigest = backupMem;
+      if (manualTrigger) alert("Digest update notice: " + (e.message || "Network error") + ". Your previous memory digest has been safely preserved.");
     } finally {
       if (manualTrigger) {
         nbDigestBtn.textContent = "📌 Update New Turns";
@@ -245,13 +272,44 @@ Reply with ONLY raw JSON, no markdown formatting or markdown codeblocks.`;
 
   async function doFullReDigest() {
     if (!currentStory) return;
-    if (!confirm("Re-digest entire story from Turn 1? This will refresh all memory facts from scratch.")) return;
+    const totalTurns = currentStory.history.length;
+    if (totalTurns === 0) return;
+    if (!confirm(`Re-digest entire story (${totalTurns} turns)? This will process in 250-turn chunks to ensure no context is missed.`)) return;
+
     const reBtn = document.getElementById('nbReDigestBtn');
     if (reBtn) reBtn.textContent = "⏳ Re-Digesting All...";
-    currentStory.lastDigestedIndex = 0;
-    currentStory.memoryDigest = { summary: '', physicalConditions: [], keyEvents: [], inventory: [], charactersMet: [] };
-    await doIncrementalDigest(true);
-    if (reBtn) reBtn.textContent = "🔄 Re-Digest Full Story";
+
+    const backupMem = JSON.parse(JSON.stringify(currentStory.memoryDigest || {}));
+
+    try {
+      currentStory.lastDigestedIndex = 0;
+      currentStory.memoryDigest = { summary: '', physicalConditions: [], keyEvents: [], inventory: [], charactersMet: [] };
+
+      const CHUNK_SIZE = 250;
+      let runningMem = { summary: '', physicalConditions: [], keyEvents: [], inventory: [], charactersMet: [] };
+
+      for (let i = 0; i < totalTurns; i += CHUNK_SIZE) {
+        const chunk = currentStory.history.slice(i, i + CHUNK_SIZE);
+        const fromTurn = i + 1;
+        const toTurn = Math.min(i + CHUNK_SIZE, totalTurns);
+        const chunkLabel = `Turns ${fromTurn} to ${toTurn} of ${totalTurns}`;
+
+        if (reBtn) reBtn.textContent = `⏳ Chunk ${fromTurn}-${toTurn}/${totalTurns}...`;
+
+        runningMem = await processDigestChunk(runningMem, chunk, chunkLabel);
+      }
+
+      currentStory.memoryDigest = runningMem;
+      currentStory.lastDigestedIndex = totalTurns;
+      autosave();
+    } catch (e) {
+      console.warn('Full re-digest error:', e);
+      currentStory.memoryDigest = backupMem;
+      alert("Re-digest error: " + (e.message || "Failed to process API output") + ". Your previous memory digest has been safely restored.");
+    } finally {
+      if (reBtn) reBtn.textContent = "🔄 Re-Digest Full Story";
+      renderNotebookModal();
+    }
   }
 
   // ── Sidebar ────────────────────────────────────────────────────────────────
