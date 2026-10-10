@@ -175,7 +175,32 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
     } catch { /* fail silently */ }
   }
 
-  // ── Chunked Digest Engine & Safety Backup ─────────────────────────────────────
+  // ── Robust JSON Repair & Parsing ───────────────────────────────────────────
+  function repairAndParseJSON(rawText) {
+    let str = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```$/, '').trim();
+    try {
+      return JSON.parse(str);
+    } catch (e) {
+      // Attempt auto-repair for truncated JSON strings from AI output
+      let repaired = str;
+      const quoteCount = (repaired.match(/"/g) || []).length;
+      if (quoteCount % 2 !== 0) repaired += '"';
+
+      const openBraces = (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length;
+      const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length;
+
+      for (let i = 0; i < openBrackets; i++) repaired += ']';
+      for (let i = 0; i < openBraces; i++) repaired += '}';
+
+      try {
+        return JSON.parse(repaired);
+      } catch (err2) {
+        throw new Error("JSON parse error: " + e.message);
+      }
+    }
+  }
+
+  // ── Step-by-Step Digest Engine ─────────────────────────────────────────────
   async function processDigestChunk(existingMem, turnsChunk, chunkLabel) {
     const existingMemText = JSON.stringify(existingMem || {});
     const turnsText = turnsChunk.map(t => `${t.role.toUpperCase()}: ${t.content}`).join('\n\n');
@@ -207,16 +232,15 @@ CRITICAL RULES:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 1000 }
+          generationConfig: { maxOutputTokens: 4000 }
         })
       }
     );
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
     let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-    rawText = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```$/, '').trim();
 
-    const parsed = JSON.parse(rawText);
+    const parsed = repairAndParseJSON(rawText);
     if (!parsed || typeof parsed !== 'object') throw new Error("Invalid JSON returned from API");
 
     return {
@@ -228,127 +252,48 @@ CRITICAL RULES:
     };
   }
 
-  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-  async function countdownDelay(buttonEl, baseText, seconds) {
-    for (let s = seconds; s > 0; s--) {
-      if (buttonEl) buttonEl.textContent = `${baseText} (${s}s)...`;
-      await sleep(1000);
-    }
-  }
-
-  // ── Incremental & Full Memory Digest ──────────────────────────────────────────────
-  async function doIncrementalDigest(manualTrigger = false) {
+  async function doStepDigest(chunkSize = 150) {
     if (!currentStory) return;
     const startIdx = currentStory.lastDigestedIndex || 0;
-    const newTurns = currentStory.history.slice(startIdx);
-    if (newTurns.length === 0 && !manualTrigger) return;
+    const totalTurns = currentStory.history.length;
+    const newTurns = currentStory.history.slice(startIdx, startIdx + chunkSize);
 
-    if (manualTrigger) nbDigestBtn.textContent = "⏳ Updating Digest...";
+    if (newTurns.length === 0) {
+      alert("All current story turns are already digested and up to date!");
+      return;
+    }
+
+    const stepBtn = document.getElementById('nbStepBtn');
+    const fromTurn = startIdx + 1;
+    const toTurn = startIdx + newTurns.length;
+
+    if (stepBtn) stepBtn.textContent = `⏳ Digesting Turns ${fromTurn}-${toTurn}...`;
+
     const backupMem = JSON.parse(JSON.stringify(currentStory.memoryDigest || {}));
 
     try {
-      const CHUNK_SIZE = 150;
-      let runningMem = backupMem;
+      const chunkLabel = `Turns ${fromTurn} to ${toTurn} of ${totalTurns}`;
+      const updatedMem = await processDigestChunk(backupMem, newTurns, chunkLabel);
 
-      for (let i = 0; i < newTurns.length; i += CHUNK_SIZE) {
-        const chunk = newTurns.slice(i, i + CHUNK_SIZE);
-        const fromTurn = startIdx + i + 1;
-        const toTurn = startIdx + Math.min(i + CHUNK_SIZE, newTurns.length);
-        const chunkLabel = `Turns ${fromTurn} to ${toTurn} (out of ${currentStory.history.length})`;
-
-        if (manualTrigger) {
-          nbDigestBtn.textContent = `⏳ Digesting ${fromTurn}-${toTurn}...`;
-        }
-
-        try {
-          runningMem = await processDigestChunk(runningMem, chunk, chunkLabel);
-        } catch (err) {
-          if (isQuotaError(err.message)) {
-            if (manualTrigger) nbDigestBtn.textContent = `⏳ Rate limit hit. Pausing 30s...`;
-            await sleep(30000);
-            runningMem = await processDigestChunk(runningMem, chunk, chunkLabel);
-          } else {
-            throw err;
-          }
-        }
-
-        if (i + CHUNK_SIZE < newTurns.length) {
-          await countdownDelay(manualTrigger ? nbDigestBtn : null, `⏳ Chunk done. TPM Reset`, 60);
-        }
-      }
-
-      currentStory.memoryDigest = runningMem;
-      currentStory.lastDigestedIndex = currentStory.history.length;
+      currentStory.memoryDigest = updatedMem;
+      currentStory.lastDigestedIndex = toTurn;
       autosave();
     } catch (e) {
-      console.warn('Digest processing warning:', e);
+      console.warn('Step digest error:', e);
       currentStory.memoryDigest = backupMem;
-      if (manualTrigger) alert("Digest notice: " + (e.message || "Quota or Network limit") + ". Your previous memory digest has been safely preserved.");
+      alert("Step digest notice: " + (e.message || "Network error") + ". Your previous memory digest has been safely preserved.");
     } finally {
-      if (manualTrigger) {
-        nbDigestBtn.textContent = "📌 Update New Turns";
-        renderNotebookModal();
-      }
+      renderNotebookModal();
     }
   }
 
-  async function doFullReDigest() {
+  function doResetDigestPointer() {
     if (!currentStory) return;
-    const totalTurns = currentStory.history.length;
-    if (totalTurns === 0) return;
-    if (!confirm(`Re-digest entire story (${totalTurns} turns)? This will process in 150-turn chunks with 60s TPM reset pauses to protect API quota.`)) return;
-
-    const reBtn = document.getElementById('nbReDigestBtn');
-    if (reBtn) reBtn.textContent = "⏳ Re-Digesting All...";
-
-    const backupMem = JSON.parse(JSON.stringify(currentStory.memoryDigest || {}));
-
-    try {
-      currentStory.lastDigestedIndex = 0;
-      currentStory.memoryDigest = { summary: '', physicalConditions: [], keyEvents: [], inventory: [], charactersMet: [] };
-
-      const CHUNK_SIZE = 150;
-      let runningMem = { summary: '', physicalConditions: [], keyEvents: [], inventory: [], charactersMet: [] };
-      const totalChunks = Math.ceil(totalTurns / CHUNK_SIZE);
-
-      for (let i = 0; i < totalTurns; i += CHUNK_SIZE) {
-        const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
-        const chunk = currentStory.history.slice(i, i + CHUNK_SIZE);
-        const fromTurn = i + 1;
-        const toTurn = Math.min(i + CHUNK_SIZE, totalTurns);
-        const chunkLabel = `Turns ${fromTurn} to ${toTurn} of ${totalTurns}`;
-
-        if (reBtn) reBtn.textContent = `⏳ Chunk ${chunkNum}/${totalChunks} (${fromTurn}-${toTurn})...`;
-
-        try {
-          runningMem = await processDigestChunk(runningMem, chunk, chunkLabel);
-        } catch (err) {
-          if (isQuotaError(err.message)) {
-            if (reBtn) reBtn.textContent = `⏳ TPM Quota limit. Waiting 30s...`;
-            await sleep(30000);
-            runningMem = await processDigestChunk(runningMem, chunk, chunkLabel);
-          } else {
-            throw err;
-          }
-        }
-
-        if (i + CHUNK_SIZE < totalTurns) {
-          await countdownDelay(reBtn, `⏳ Chunk ${chunkNum}/${totalChunks} done. TPM Reset`, 60);
-        }
-      }
-
-      currentStory.memoryDigest = runningMem;
-      currentStory.lastDigestedIndex = totalTurns;
-      autosave();
-    } catch (e) {
-      console.warn('Full re-digest error:', e);
-      currentStory.memoryDigest = backupMem;
-      alert("Re-digest error: " + (e.message || "Failed to process API output") + ". Your previous memory digest has been safely restored.");
-    } finally {
-      if (reBtn) reBtn.textContent = "🔄 Re-Digest Full Story";
-      renderNotebookModal();
-    }
+    if (!confirm("Reset memory digest and start digesting from Turn 1 again? (Your chat history will NOT be deleted).")) return;
+    currentStory.lastDigestedIndex = 0;
+    currentStory.memoryDigest = { summary: '', physicalConditions: [], keyEvents: [], inventory: [], charactersMet: [] };
+    autosave();
+    renderNotebookModal();
   }
 
   // ── Sidebar ────────────────────────────────────────────────────────────────
@@ -753,11 +698,6 @@ CRITICAL RULES:
       if (currentStory.history.length === 2 && currentStory.title === 'Untitled Story') {
         generateTitle(currentStory.premise, currentStory.id);
       }
-
-      const unDigested = currentStory.history.length - (currentStory.lastDigestedIndex || 0);
-      if (unDigested >= 20) {
-        doIncrementalDigest(false);
-      }
     } catch (err) {
       hideThinking();
       if (err.isQuota) {
@@ -774,11 +714,22 @@ CRITICAL RULES:
   function renderNotebookModal() {
     if (!currentStory) return;
     const mem = currentStory.memoryDigest || {};
-    const unDigested = currentStory.history.length - (currentStory.lastDigestedIndex || 0);
+    const totalTurns = currentStory.history.length;
+    const lastIdx = currentStory.lastDigestedIndex || 0;
+    const remaining = totalTurns - lastIdx;
 
     nbTitle.textContent = `Story Memory & Digest (${currentStory.title})`;
 
     let html = '';
+    html += `<div style="background: rgba(201,164,100,0.08); border: 1px solid rgba(201,164,100,0.2); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px;">`;
+    html += `<div><strong>Digested Progress:</strong> Turns 1 to ${lastIdx} (out of ${totalTurns} total turns)</div>`;
+    if (remaining > 0) {
+      html += `<div style="color: var(--gold); margin-top: 4px;">⏳ ${remaining} turn(s) pending digest</div>`;
+    } else {
+      html += `<div style="color: #7fa088; margin-top: 4px;">✓ Memory is fully up-to-date!</div>`;
+    }
+    html += `</div>`;
+
     html += `<h4>Summary</h4><p>${escapeHtml(mem.summary || 'No summary generated yet.')}</p>`;
 
     if (mem.physicalConditions && mem.physicalConditions.length) {
@@ -797,9 +748,21 @@ CRITICAL RULES:
       html += `<h4>Characters Met</h4><ul>` + mem.charactersMet.map(c => `<li>${escapeHtml(c)}</li>`).join('') + `</ul>`;
     }
 
-    html += `<p style="font-size:11px; opacity:0.6; margin-top:14px; text-align:center;">Unprocessed new turns: ${unDigested} turn(s)</p>`;
-
     nbBody.innerHTML = html;
+
+    const stepBtn = document.getElementById('nbStepBtn');
+    if (stepBtn) {
+      if (remaining > 0) {
+        const chunkSize = Math.min(150, remaining);
+        const fromTurn = lastIdx + 1;
+        const toTurn = lastIdx + chunkSize;
+        stepBtn.textContent = `📌 Digest Next ${chunkSize} Turns (Turn ${fromTurn}-${toTurn})`;
+        stepBtn.disabled = false;
+      } else {
+        stepBtn.textContent = `✓ Memory Up-To-Date`;
+        stepBtn.disabled = true;
+      }
+    }
   }
 
   function openNotebook() {
@@ -832,8 +795,8 @@ CRITICAL RULES:
 
   notebookBtn.addEventListener('click', openNotebook);
   nbCloseBtn.addEventListener('click', closeNotebook);
-  nbDigestBtn.addEventListener('click', () => doIncrementalDigest(true));
-  document.getElementById('nbReDigestBtn')?.addEventListener('click', doFullReDigest);
+  document.getElementById('nbStepBtn')?.addEventListener('click', () => doStepDigest(150));
+  document.getElementById('nbResetBtn')?.addEventListener('click', doResetDigestPointer);
 
   versionBtn.addEventListener('click', () => changelogModal.classList.add('show'));
   clCloseBtn.addEventListener('click', () => changelogModal.classList.remove('show'));
