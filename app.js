@@ -265,8 +265,8 @@ CRITICAL RULES:
           runningMem = await processDigestChunk(runningMem, chunk, chunkLabel);
         } catch (err) {
           if (isQuotaError(err.message)) {
-            if (manualTrigger) nbDigestBtn.textContent = `⏳ Rate limit. Waiting 12s...`;
-            await sleep(12000);
+            if (manualTrigger) nbDigestBtn.textContent = `⏳ Rate limit hit. Pausing 30s...`;
+            await sleep(30000);
             runningMem = await processDigestChunk(runningMem, chunk, chunkLabel);
           } else {
             throw err;
@@ -274,7 +274,7 @@ CRITICAL RULES:
         }
 
         if (i + CHUNK_SIZE < newTurns.length) {
-          await countdownDelay(manualTrigger ? nbDigestBtn : null, `⏳ Chunk done`, 7);
+          await countdownDelay(manualTrigger ? nbDigestBtn : null, `⏳ Chunk done. TPM Reset`, 60);
         }
       }
 
@@ -297,7 +297,7 @@ CRITICAL RULES:
     if (!currentStory) return;
     const totalTurns = currentStory.history.length;
     if (totalTurns === 0) return;
-    if (!confirm(`Re-digest entire story (${totalTurns} turns)? This will process safely in 150-turn chunks with 7s pauses to protect API quota.`)) return;
+    if (!confirm(`Re-digest entire story (${totalTurns} turns)? This will process in 150-turn chunks with 60s TPM reset pauses to protect API quota.`)) return;
 
     const reBtn = document.getElementById('nbReDigestBtn');
     if (reBtn) reBtn.textContent = "⏳ Re-Digesting All...";
@@ -325,8 +325,8 @@ CRITICAL RULES:
           runningMem = await processDigestChunk(runningMem, chunk, chunkLabel);
         } catch (err) {
           if (isQuotaError(err.message)) {
-            if (reBtn) reBtn.textContent = `⏳ Quota limit. Pausing 12s...`;
-            await sleep(12000);
+            if (reBtn) reBtn.textContent = `⏳ TPM Quota limit. Waiting 30s...`;
+            await sleep(30000);
             runningMem = await processDigestChunk(runningMem, chunk, chunkLabel);
           } else {
             throw err;
@@ -334,7 +334,7 @@ CRITICAL RULES:
         }
 
         if (i + CHUNK_SIZE < totalTurns) {
-          await countdownDelay(reBtn, `⏳ Chunk ${chunkNum}/${totalChunks} done`, 7);
+          await countdownDelay(reBtn, `⏳ Chunk ${chunkNum}/${totalChunks} done. TPM Reset`, 60);
         }
       }
 
