@@ -228,6 +228,15 @@ CRITICAL RULES:
     };
   }
 
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+  async function countdownDelay(buttonEl, baseText, seconds) {
+    for (let s = seconds; s > 0; s--) {
+      if (buttonEl) buttonEl.textContent = `${baseText} (${s}s)...`;
+      await sleep(1000);
+    }
+  }
+
   // ── Incremental & Full Memory Digest ──────────────────────────────────────────────
   async function doIncrementalDigest(manualTrigger = false) {
     if (!currentStory) return;
@@ -239,7 +248,7 @@ CRITICAL RULES:
     const backupMem = JSON.parse(JSON.stringify(currentStory.memoryDigest || {}));
 
     try {
-      const CHUNK_SIZE = 250;
+      const CHUNK_SIZE = 150;
       let runningMem = backupMem;
 
       for (let i = 0; i < newTurns.length; i += CHUNK_SIZE) {
@@ -248,11 +257,25 @@ CRITICAL RULES:
         const toTurn = startIdx + Math.min(i + CHUNK_SIZE, newTurns.length);
         const chunkLabel = `Turns ${fromTurn} to ${toTurn} (out of ${currentStory.history.length})`;
 
-        if (manualTrigger && newTurns.length > CHUNK_SIZE) {
+        if (manualTrigger) {
           nbDigestBtn.textContent = `⏳ Digesting ${fromTurn}-${toTurn}...`;
         }
 
-        runningMem = await processDigestChunk(runningMem, chunk, chunkLabel);
+        try {
+          runningMem = await processDigestChunk(runningMem, chunk, chunkLabel);
+        } catch (err) {
+          if (isQuotaError(err.message)) {
+            if (manualTrigger) nbDigestBtn.textContent = `⏳ Rate limit. Waiting 12s...`;
+            await sleep(12000);
+            runningMem = await processDigestChunk(runningMem, chunk, chunkLabel);
+          } else {
+            throw err;
+          }
+        }
+
+        if (i + CHUNK_SIZE < newTurns.length) {
+          await countdownDelay(manualTrigger ? nbDigestBtn : null, `⏳ Chunk done`, 7);
+        }
       }
 
       currentStory.memoryDigest = runningMem;
@@ -261,7 +284,7 @@ CRITICAL RULES:
     } catch (e) {
       console.warn('Digest processing warning:', e);
       currentStory.memoryDigest = backupMem;
-      if (manualTrigger) alert("Digest update notice: " + (e.message || "Network error") + ". Your previous memory digest has been safely preserved.");
+      if (manualTrigger) alert("Digest notice: " + (e.message || "Quota or Network limit") + ". Your previous memory digest has been safely preserved.");
     } finally {
       if (manualTrigger) {
         nbDigestBtn.textContent = "📌 Update New Turns";
@@ -274,7 +297,7 @@ CRITICAL RULES:
     if (!currentStory) return;
     const totalTurns = currentStory.history.length;
     if (totalTurns === 0) return;
-    if (!confirm(`Re-digest entire story (${totalTurns} turns)? This will process in 250-turn chunks to ensure no context is missed.`)) return;
+    if (!confirm(`Re-digest entire story (${totalTurns} turns)? This will process safely in 150-turn chunks with 7s pauses to protect API quota.`)) return;
 
     const reBtn = document.getElementById('nbReDigestBtn');
     if (reBtn) reBtn.textContent = "⏳ Re-Digesting All...";
@@ -285,18 +308,34 @@ CRITICAL RULES:
       currentStory.lastDigestedIndex = 0;
       currentStory.memoryDigest = { summary: '', physicalConditions: [], keyEvents: [], inventory: [], charactersMet: [] };
 
-      const CHUNK_SIZE = 250;
+      const CHUNK_SIZE = 150;
       let runningMem = { summary: '', physicalConditions: [], keyEvents: [], inventory: [], charactersMet: [] };
+      const totalChunks = Math.ceil(totalTurns / CHUNK_SIZE);
 
       for (let i = 0; i < totalTurns; i += CHUNK_SIZE) {
+        const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
         const chunk = currentStory.history.slice(i, i + CHUNK_SIZE);
         const fromTurn = i + 1;
         const toTurn = Math.min(i + CHUNK_SIZE, totalTurns);
         const chunkLabel = `Turns ${fromTurn} to ${toTurn} of ${totalTurns}`;
 
-        if (reBtn) reBtn.textContent = `⏳ Chunk ${fromTurn}-${toTurn}/${totalTurns}...`;
+        if (reBtn) reBtn.textContent = `⏳ Chunk ${chunkNum}/${totalChunks} (${fromTurn}-${toTurn})...`;
 
-        runningMem = await processDigestChunk(runningMem, chunk, chunkLabel);
+        try {
+          runningMem = await processDigestChunk(runningMem, chunk, chunkLabel);
+        } catch (err) {
+          if (isQuotaError(err.message)) {
+            if (reBtn) reBtn.textContent = `⏳ Quota limit. Pausing 12s...`;
+            await sleep(12000);
+            runningMem = await processDigestChunk(runningMem, chunk, chunkLabel);
+          } else {
+            throw err;
+          }
+        }
+
+        if (i + CHUNK_SIZE < totalTurns) {
+          await countdownDelay(reBtn, `⏳ Chunk ${chunkNum}/${totalChunks} done`, 7);
+        }
       }
 
       currentStory.memoryDigest = runningMem;
