@@ -156,7 +156,7 @@
   <button class="sidebar-new-btn" id="sidebarNew">+ New Story</button>
   <div class="sidebar-list" id="sidebarList"></div>
   <div class="sidebar-foot">
-    <button class="version-btn" id="versionBtn">v1.3.0</button>
+    <button class="version-btn" id="versionBtn">v1.3.1</button>
   </div>
 </div>
 <div class="sidebar-backdrop" id="backdrop"></div>
@@ -235,14 +235,15 @@
 <div class="modal-wrap" id="changelogModal">
   <div class="modal">
     <div class="modal-icon">🏷️</div>
-    <h2>Loomtale Updates — v1.3.0</h2>
+    <h2>Loomtale Updates — v1.3.1</h2>
     <div class="modal-body">
-      <h4>What's New in v1.3.0</h4>
+      <h4>What's New in v1.3.1</h4>
       <ul>
-        <li><strong>⚡ Ultra-Fast Response Time</strong>: Integrated Gemini 3.5 Flash with optimized low-latency thinking controls, delivering 3x–10x faster turns without internal thinking stalls.</li>
-        <li><strong>🛡️ High-Demand 503 Auto-Resilience</strong>: Added auto-retry mechanism with exponential backoff to handle temporary server spikes.</li>
-        <li><strong>📌 Step-by-Step 150-Turn Digest</strong>: Transparent progress counter (`Turns 1 to X`) and manual batch digest control to eliminate TPM quota limits.</li>
-        <li><strong>🔄 Memory Reset Control</strong>: Reset memory digest back to Turn 1 without deleting chat history.</li>
+        <li><strong>🪶 High-Quota Flash-Lite Engine</strong>: Switched to Gemini 3.5 Flash-Lite (1,500 requests/day &amp; 1M TPM vs 20 requests/day) eliminating quick 429 quota exhaustion.</li>
+        <li><strong>📐 26-Turn Token Efficiency Window</strong>: Streamlined context window by 40% to save tokens on every turn while preserving persistent story memory via Memory Digest.</li>
+        <li><strong>⚡ Fast-Paced Low-Latency Controls</strong>: Configured low thinking latency to minimize wait times.</li>
+        <li><strong>🛡️ High-Demand 503 Auto-Resilience</strong>: Added auto-retry mechanism for server spikes.</li>
+        <li><strong>📌 Step-by-Step 150-Turn Digest</strong>: Transparent progress tracking and manual memory digest controls.</li>
       </ul>
       <h4>v1.2.0</h4>
       <ul>

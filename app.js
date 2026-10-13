@@ -1,9 +1,9 @@
 (function () {
   // ── Constants ──────────────────────────────────────────────────────────────
   const DEFAULT_KEY = atob('QVEuQWI4Uk42S1JVS05HUm9qZlpYdnJBV1JiZld1MlNicld3YlZLdTlURnFDMEgwemQ4TWc=');
-  const MODEL       = 'gemini-3.5-flash';
+  const MODEL       = 'gemini-3.5-flash-lite';
   const STORAGE_KEY = 'loomtale_stories';
-  const VERSION     = 'v1.3.0';
+  const VERSION     = 'v1.3.1';
 
   // ── DOM ────────────────────────────────────────────────────────────────────
   const sidebarEl       = document.getElementById('sidebar');
@@ -657,7 +657,7 @@ CRITICAL RULES:
       sysPrompt += memContext;
     }
 
-    const WINDOW_SIZE = 36;
+    const WINDOW_SIZE = 26;
     const slicedHist = hist.length > WINDOW_SIZE ? hist.slice(hist.length - WINDOW_SIZE) : hist;
 
     contents = slicedHist.map(msg => ({
