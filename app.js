@@ -3,7 +3,7 @@
   const DEFAULT_KEY = atob('QVEuQWI4Uk42S1JVS05HUm9qZlpYdnJBV1JiZld1MlNicld3YlZLdTlURnFDMEgwemQ4TWc=');
   const MODEL       = 'gemini-3.5-flash';
   const STORAGE_KEY = 'loomtale_stories';
-  const VERSION     = 'v1.2.0';
+  const VERSION     = 'v1.3.0';
 
   // ── DOM ────────────────────────────────────────────────────────────────────
   const sidebarEl       = document.getElementById('sidebar');
@@ -161,7 +161,10 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: `Generate a single evocative title for a story with this premise: "${premise}". The title should sound like a real published novel or short story — 2-5 words, atmospheric and intriguing. Reply with ONLY the title, no quotes, no explanation, no period at the end.` }] }],
-            generationConfig: { maxOutputTokens: 20 }
+            generationConfig: {
+              maxOutputTokens: 20,
+              thinkingConfig: { thinkingLevel: 'minimal' }
+            }
           })
         }
       );
@@ -232,7 +235,10 @@ CRITICAL RULES:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 4000 }
+          generationConfig: {
+            maxOutputTokens: 4000,
+            thinkingConfig: { thinkingLevel: 'low' }
+          }
         })
       }
     );
@@ -625,7 +631,7 @@ CRITICAL RULES:
       msg.includes('limit') || msg.includes('429') || msg.includes('exhausted'));
   }
 
-  async function callGemini() {
+  async function callGemini(retryCount = 0) {
     const key = getActiveKey();
     if (!key) {
       const err = new Error("No API key configured");
@@ -651,7 +657,7 @@ CRITICAL RULES:
       sysPrompt += memContext;
     }
 
-    const WINDOW_SIZE = 60;
+    const WINDOW_SIZE = 36;
     const slicedHist = hist.length > WINDOW_SIZE ? hist.slice(hist.length - WINDOW_SIZE) : hist;
 
     contents = slicedHist.map(msg => ({
@@ -667,12 +673,19 @@ CRITICAL RULES:
         body: JSON.stringify({
           system_instruction: { parts: [{ text: sysPrompt }] },
           contents,
-          generationConfig: { maxOutputTokens: 1000 }
+          generationConfig: {
+            maxOutputTokens: 1000,
+            thinkingConfig: { thinkingLevel: 'low' }
+          }
         })
       }
     );
     const data = await res.json();
     if (data.error) {
+      if ((res.status === 503 || data.error.code === 503) && retryCount < 1) {
+        await new Promise(r => setTimeout(r, 1500));
+        return callGemini(retryCount + 1);
+      }
       const err = new Error(data.error.message);
       err.isQuota = isQuotaError(data.error.message) || res.status === 429 || res.status === 403;
       throw err;
