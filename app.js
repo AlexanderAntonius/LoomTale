@@ -1,7 +1,7 @@
 (function () {
   // ── Constants ──────────────────────────────────────────────────────────────
   const DEFAULT_KEY = atob('QVEuQWI4Uk42S1JVS05HUm9qZlpYdnJBV1JiZld1MlNicld3YlZLdTlURnFDMEgwemQ4TWc=');
-  const MODEL       = 'gemini-3.5-flash-lite';
+  const MODEL       = 'gemini-3.5-flash';
   const STORAGE_KEY = 'loomtale_stories';
   const VERSION     = 'v1.2.0';
 
