@@ -156,7 +156,7 @@
   <button class="sidebar-new-btn" id="sidebarNew">+ New Story</button>
   <div class="sidebar-list" id="sidebarList"></div>
   <div class="sidebar-foot">
-    <button class="version-btn" id="versionBtn">v1.3.1</button>
+    <button class="version-btn" id="versionBtn">v1.3.2</button>
   </div>
 </div>
 <div class="sidebar-backdrop" id="backdrop"></div>
@@ -235,15 +235,18 @@
 <div class="modal-wrap" id="changelogModal">
   <div class="modal">
     <div class="modal-icon">🏷️</div>
-    <h2>Loomtale Updates — v1.3.1</h2>
+    <h2>Loomtale Updates — v1.3.2</h2>
     <div class="modal-body">
-      <h4>What's New in v1.3.1</h4>
+      <h4>What's New in v1.3.2</h4>
       <ul>
-        <li><strong>🪶 High-Quota Flash-Lite Engine</strong>: Switched to Gemini 3.5 Flash-Lite (1,500 requests/day &amp; 1M TPM vs 20 requests/day) eliminating quick 429 quota exhaustion.</li>
-        <li><strong>📐 26-Turn Token Efficiency Window</strong>: Streamlined context window by 40% to save tokens on every turn while preserving persistent story memory via Memory Digest.</li>
-        <li><strong>⚡ Fast-Paced Low-Latency Controls</strong>: Configured low thinking latency to minimize wait times.</li>
-        <li><strong>🛡️ High-Demand 503 Auto-Resilience</strong>: Added auto-retry mechanism for server spikes.</li>
-        <li><strong>📌 Step-by-Step 150-Turn Digest</strong>: Transparent progress tracking and manual memory digest controls.</li>
+        <li><strong>📜 3,000 Token Output Ceiling</strong>: Expanded maximum output limit from 1,000 to 3,000 tokens, permanently fixing mid-sentence text truncation on long dialogues, poems, and dramatic scenes.</li>
+        <li><strong>⚡ Zero-Overhead Minimal Thinking</strong>: Streamlined model reasoning to avoid wasting token budget on internal thoughts, dedicating 100% of generation capacity to fluent narrative text.</li>
+        <li><strong>🪶 High-Quota 1,500 RPD Engine</strong>: Continues to utilize Gemini 3.5 Flash-Lite with 1M TPM for reliable all-day roleplay without hitting daily limits.</li>
+      </ul>
+      <h4>v1.3.1</h4>
+      <ul>
+        <li><strong>📐 26-Turn Context Window</strong>: Streamlined sliding window for 40% token efficiency.</li>
+        <li><strong>🛡️ 503 Auto-Resilience</strong>: Added auto-retry mechanism for server spikes.</li>
       </ul>
       <h4>v1.2.0</h4>
       <ul>

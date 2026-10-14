@@ -3,7 +3,7 @@
   const DEFAULT_KEY = atob('QVEuQWI4Uk42S1JVS05HUm9qZlpYdnJBV1JiZld1MlNicld3YlZLdTlURnFDMEgwemQ4TWc=');
   const MODEL       = 'gemini-3.5-flash-lite';
   const STORAGE_KEY = 'loomtale_stories';
-  const VERSION     = 'v1.3.1';
+  const VERSION     = 'v1.3.2';
 
   // ── DOM ────────────────────────────────────────────────────────────────────
   const sidebarEl       = document.getElementById('sidebar');
@@ -674,8 +674,8 @@ CRITICAL RULES:
           system_instruction: { parts: [{ text: sysPrompt }] },
           contents,
           generationConfig: {
-            maxOutputTokens: 1000,
-            thinkingConfig: { thinkingLevel: 'low' }
+            maxOutputTokens: 3000,
+            thinkingConfig: { thinkingLevel: 'minimal' }
           }
         })
       }
