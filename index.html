@@ -60,6 +60,8 @@
   .sidebar-list { flex: 1; overflow-y: auto; padding: 4px 0; }
   .sidebar-empty { padding: 24px 16px; color: var(--mist-dim); font-size: 13px; font-style: italic; text-align: center; line-height: 1.6; }
   .sidebar-foot { padding: 12px 14px; border-top: 1px solid rgba(201,164,100,0.1); text-align: center; }
+  .sidebar-tool-btn { background: transparent; border: 1px solid rgba(201,164,100,0.25); color: var(--mist); font-size: 11px; padding: 7px 10px; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 100%; text-align: center; }
+  .sidebar-tool-btn:hover { border-color: var(--gold); color: var(--moon); background: rgba(201,164,100,0.08); }
   .version-btn { background: none; border: none; color: var(--mist-dim); font-size: 11px; letter-spacing: 1px; cursor: pointer; transition: color 0.2s; }
   .version-btn:hover { color: var(--gold); }
 
@@ -104,6 +106,12 @@
   .scene-marker { display: flex; align-items: center; gap: 10px; padding-left: 34px; margin: 28px 0; color: var(--gold); font-size: 10.5px; letter-spacing: 2.5px; text-transform: uppercase; position: relative; }
   .scene-marker::before { content: ''; position: absolute; left: 20px; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 8px rgba(201,164,100,0.7); }
   .narration { font-family: var(--font-display); font-style: italic; font-size: 15.5px; line-height: 1.75; color: var(--moon); opacity: 0.92; border-left: 2px solid var(--mood-accent, var(--gold-dim)); padding-left: 16px; transition: border-color 1.2s ease; }
+  .frayed-box { background: rgba(201, 122, 122, 0.08); border: 1px solid rgba(201, 122, 122, 0.35); border-left: 3px solid #c97a7a; border-radius: 8px; padding: 12px 14px; margin-top: 4px; }
+  .frayed-header { font-family: var(--font-display); font-style: italic; font-size: 14.5px; color: #e09494; margin-bottom: 6px; }
+  .frayed-detail { font-size: 12px; color: var(--mist); background: rgba(0, 0, 0, 0.35); padding: 7px 10px; border-radius: 6px; font-family: Consolas, monospace; word-break: break-word; white-space: pre-wrap; margin-bottom: 8px; border: 1px solid rgba(255, 255, 255, 0.05); }
+  .frayed-actions { display: flex; gap: 8px; }
+  .frayed-actions .act-btn { background: rgba(237, 230, 211, 0.06); border: 1px solid rgba(139, 147, 167, 0.25); color: var(--moon); padding: 4px 10px; border-radius: 4px; font-size: 11px; }
+  .frayed-actions .act-btn:hover { background: rgba(237, 230, 211, 0.15); border-color: var(--gold); }
   .char-row { display: flex; gap: 10px; align-items: flex-start; }
   .avatar { flex: none; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-size: 13px; font-weight: bold; color: var(--void-deep); margin-top: 2px; }
   .char-body { flex: 1; min-width: 0; }
@@ -156,7 +164,11 @@
   <button class="sidebar-new-btn" id="sidebarNew">+ New Story</button>
   <div class="sidebar-list" id="sidebarList"></div>
   <div class="sidebar-foot">
-    <button class="version-btn" id="versionBtn">v1.3.2</button>
+    <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px;">
+      <button class="sidebar-tool-btn" id="exportLogBtn" title="Download diagnostic debug log">📥 Export Debug Log</button>
+      <button class="sidebar-tool-btn" id="resetKeyBtn" title="Reset custom API key back to default" style="display: none; border-color: rgba(201,122,122,0.4); color: #c97a7a;">🔑 Reset API Key</button>
+    </div>
+    <button class="version-btn" id="versionBtn">v1.3.3</button>
   </div>
 </div>
 <div class="sidebar-backdrop" id="backdrop"></div>
@@ -235,9 +247,15 @@
 <div class="modal-wrap" id="changelogModal">
   <div class="modal">
     <div class="modal-icon">🏷️</div>
-    <h2>Loomtale Updates — v1.3.2</h2>
+    <h2>Loomtale Updates — v1.3.3</h2>
     <div class="modal-body">
-      <h4>What's New in v1.3.2</h4>
+      <h4>What's New in v1.3.3</h4>
+      <ul>
+        <li><strong>🔍 In-Chat Error Transparency</strong>: If the thread frays, the exact failure reason (HTTP error, API key issue, or filter trigger) is displayed directly in chat with an instant 1-tap Copy button.</li>
+        <li><strong>📥 Diagnostic Log Export</strong>: Persistent in-app debug log system. Easily download a diagnostic file or view recorded errors from the sidebar and chat.</li>
+        <li><strong>🛡️ Auto-Recovery &amp; Safety Relaxations</strong>: Automatically detects and purges invalid or expired custom API keys to instantly fall back to default shared keys, and sets safety thresholds to BLOCK_NONE for uninterrupted creative storytelling.</li>
+      </ul>
+      <h4>v1.3.2</h4>
       <ul>
         <li><strong>📜 3,000 Token Output Ceiling</strong>: Expanded maximum output limit from 1,000 to 3,000 tokens, permanently fixing mid-sentence text truncation on long dialogues, poems, and dramatic scenes.</li>
         <li><strong>⚡ Zero-Overhead Minimal Thinking</strong>: Streamlined model reasoning to avoid wasting token budget on internal thoughts, dedicating 100% of generation capacity to fluent narrative text.</li>

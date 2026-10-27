@@ -3,7 +3,15 @@
   const DEFAULT_KEY = atob('QVEuQWI4Uk42S1JVS05HUm9qZlpYdnJBV1JiZld1MlNicld3YlZLdTlURnFDMEgwemQ4TWc=');
   const MODEL       = 'gemini-3.5-flash-lite';
   const STORAGE_KEY = 'loomtale_stories';
-  const VERSION     = 'v1.3.2';
+  const LOG_STORAGE_KEY = 'loomtale_debug_logs';
+  const VERSION     = 'v1.3.3';
+
+  const SAFETY_SETTINGS = [
+    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+  ];
 
   // ── DOM ────────────────────────────────────────────────────────────────────
   const sidebarEl       = document.getElementById('sidebar');
@@ -11,6 +19,8 @@
   const sidebarListEl   = document.getElementById('sidebarList');
   const sidebarCloseBtn = document.getElementById('sidebarClose');
   const sidebarNewBtn   = document.getElementById('sidebarNew');
+  const exportLogBtn    = document.getElementById('exportLogBtn');
+  const resetKeyBtn     = document.getElementById('resetKeyBtn');
   const burgerBtn       = document.getElementById('burgerBtn');
   const setupBurgerBtn  = document.getElementById('setupBurgerBtn');
   const newStoryBtn     = document.getElementById('newStoryBtn');
@@ -123,6 +133,104 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
     get(id) { return this.getAll().find(s => s.id === id) || null; }
   };
 
+  // ── Error Logging System ───────────────────────────────────────────────────
+  const ErrorLog = {
+    getAll() {
+      try { return JSON.parse(localStorage.getItem(LOG_STORAGE_KEY) || '[]'); }
+      catch { return []; }
+    },
+    add(entry) {
+      try {
+        const logs = this.getAll();
+        const customKey = localStorage.getItem('loomtale_user_key');
+        const maskedKey = customKey ? (customKey.slice(0, 6) + '...' + customKey.slice(-4)) : 'None';
+        const newEntry = {
+          id: Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+          timestamp: new Date().toISOString(),
+          localTime: new Date().toLocaleString(),
+          version: VERSION,
+          userAgent: navigator.userAgent,
+          hasCustomKey: !!(customKey && customKey.trim()),
+          maskedKey,
+          storyId: currentStory ? currentStory.id : null,
+          storyTitle: currentStory ? currentStory.title : 'None',
+          turnCount: currentStory ? currentStory.history.length : 0,
+          ...entry
+        };
+        logs.unshift(newEntry);
+        if (logs.length > 50) logs.length = 50;
+        localStorage.setItem(LOG_STORAGE_KEY, JSON.stringify(logs));
+        return newEntry;
+      } catch (e) {
+        console.error('Failed to save error log', e);
+      }
+    },
+    clear() {
+      localStorage.removeItem(LOG_STORAGE_KEY);
+    },
+    exportAsText() {
+      const logs = this.getAll();
+      const customKey = localStorage.getItem('loomtale_user_key');
+      const allStories = Storage.getAll();
+      let text = `========================================\n` +
+                 `LOOMTALE DIAGNOSTIC DEBUG LOG\n` +
+                 `========================================\n` +
+                 `App Version    : ${VERSION}\n` +
+                 `Exported At    : ${new Date().toLocaleString()} (${new Date().toISOString()})\n` +
+                 `Browser/Device : ${navigator.userAgent}\n` +
+                 `Screen Size    : ${window.innerWidth}x${window.innerHeight}\n` +
+                 `Custom API Key : ${customKey ? 'Configured (' + customKey.slice(0, 6) + '...' + customKey.slice(-4) + ')' : 'Using Default Server Key'}\n` +
+                 `Total Stories  : ${allStories.length}\n`;
+
+      if (allStories.length > 0) {
+        text += `Story List     :\n`;
+        allStories.forEach((s, idx) => {
+          text += `  [${idx + 1}] "${s.title}" (ID: ${s.id}, Turns: ${s.history?.length || 0}, Updated: ${new Date(s.updatedAt).toLocaleString()})\n`;
+        });
+      }
+
+      text += `\nTotal Errors Logged: ${logs.length}\n`;
+      text += `========================================\n\n`;
+
+      if (logs.length === 0) {
+        text += `No runtime errors currently recorded in storage.\n`;
+      } else {
+        logs.forEach((item, idx) => {
+          text += `--- [LOG #${idx + 1}] ${item.localTime} ---\n`;
+          text += `Error Message: ${item.message || 'Unknown'}\n`;
+          if (item.status) text += `HTTP Status  : ${item.status}\n`;
+          text += `Story Active : "${item.storyTitle}" (ID: ${item.storyId}, Turns: ${item.turnCount})\n`;
+          text += `Custom Key   : ${item.hasCustomKey ? 'YES (' + item.maskedKey + ')' : 'NO (default)'}\n`;
+          if (item.lastUserTurn) text += `User Input   : "${item.lastUserTurn}"\n`;
+          if (item.errorDetail) {
+            text += `Error Detail :\n${typeof item.errorDetail === 'object' ? JSON.stringify(item.errorDetail, null, 2) : item.errorDetail}\n`;
+          }
+          if (item.stack) text += `Stack Trace  : ${item.stack}\n`;
+          text += `\n`;
+        });
+      }
+      return text;
+    },
+    download() {
+      const text = this.exportAsText();
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const filename = `loomtale-debug-log-${dateStr}.txt`;
+      try {
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (e) {
+        alert("Export log error: " + e.message);
+      }
+    }
+  };
+
   // ── Story helpers ──────────────────────────────────────────────────────────
   function createStory(premise) {
     return {
@@ -161,6 +269,7 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: `Generate a single evocative title for a story with this premise: "${premise}". The title should sound like a real published novel or short story — 2-5 words, atmospheric and intriguing. Reply with ONLY the title, no quotes, no explanation, no period at the end.` }] }],
+            safetySettings: SAFETY_SETTINGS,
             generationConfig: {
               maxOutputTokens: 20,
               thinkingConfig: { thinkingLevel: 'minimal' }
@@ -235,6 +344,7 @@ CRITICAL RULES:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          safetySettings: SAFETY_SETTINGS,
           generationConfig: {
             maxOutputTokens: 4000,
             thinkingConfig: { thinkingLevel: 'low' }
@@ -341,6 +451,11 @@ CRITICAL RULES:
         });
         sidebarListEl.appendChild(card);
       });
+
+      if (resetKeyBtn) {
+        const hasCustomKey = !!(localStorage.getItem('loomtale_user_key') && localStorage.getItem('loomtale_user_key').trim());
+        resetKeyBtn.style.display = hasCustomKey ? 'block' : 'none';
+      }
     }
   };
 
@@ -510,6 +625,45 @@ CRITICAL RULES:
     return div;
   }
 
+  function addFrayedNarration(errorMessage) {
+    const div = document.createElement('div');
+    div.className = 'entry' + (isReplaying ? ' no-anim' : '');
+    const cleanMsg = errorMessage || 'Something went wrong while connecting to the storyteller engine.';
+    div.innerHTML =
+      '<div class="frayed-box">' +
+        '<div class="frayed-header">⚠️ The thread frayed — something went wrong.</div>' +
+        '<div class="frayed-detail">' + escapeHtml(cleanMsg) + '</div>' +
+        '<div class="frayed-actions">' +
+          '<button class="act-btn frayed-copy-btn">📋 Copy Error</button>' +
+          '<button class="act-btn frayed-export-btn">📥 Export Log</button>' +
+        '</div>' +
+      '</div>';
+
+    const copyBtn = div.querySelector('.frayed-copy-btn');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => {
+        const textToCopy = `[Loomtale ${VERSION} Error]\n${cleanMsg}`;
+        navigator.clipboard.writeText(textToCopy).then(() => {
+          copyBtn.textContent = '✓ Copied!';
+          setTimeout(() => { copyBtn.textContent = '📋 Copy Error'; }, 1500);
+        }).catch(() => {
+          prompt('Copy error details:', textToCopy);
+        });
+      });
+    }
+
+    const exportBtn = div.querySelector('.frayed-export-btn');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => {
+        ErrorLog.download();
+      });
+    }
+
+    logEl.appendChild(div);
+    scrollBottom();
+    return div;
+  }
+
   function addCharacter(name, text, msgIdx) {
     const color = colorFor(name);
     const div = document.createElement('div');
@@ -632,7 +786,7 @@ CRITICAL RULES:
   }
 
   async function callGemini(retryCount = 0) {
-    const key = getActiveKey();
+    let key = getActiveKey();
     if (!key) {
       const err = new Error("No API key configured");
       err.isQuota = true;
@@ -665,39 +819,103 @@ CRITICAL RULES:
       parts: [{ text: msg.content }]
     }));
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: sysPrompt }] },
-          contents,
-          generationConfig: {
-            maxOutputTokens: 3000,
-            thinkingConfig: { thinkingLevel: 'minimal' }
-          }
-        })
-      }
-    );
-    const data = await res.json();
+    let res;
+    try {
+      res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: sysPrompt }] },
+            contents,
+            safetySettings: SAFETY_SETTINGS,
+            generationConfig: {
+              maxOutputTokens: 3000,
+              thinkingConfig: { thinkingLevel: 'minimal' }
+            }
+          })
+        }
+      );
+    } catch (networkErr) {
+      const err = new Error("Network connection failed: " + networkErr.message);
+      err.network = true;
+      throw err;
+    }
+
+    let data;
+    try {
+      data = await res.json();
+    } catch (parseErr) {
+      const err = new Error(`Server returned HTTP ${res.status} with non-JSON response`);
+      err.status = res.status;
+      throw err;
+    }
+
     if (data.error) {
+      // Auto recovery: If user key was invalid or expired, clear it and retry with default shared key
+      const userKey = localStorage.getItem('loomtale_user_key');
+      const errMsg = data.error.message || '';
+      if (userKey && (errMsg.includes('API key') || errMsg.includes('API_KEY') || res.status === 400 || res.status === 403)) {
+        console.warn('Custom API key failed (' + errMsg + '). Automatically removing and falling back to default shared key...');
+        localStorage.removeItem('loomtale_user_key');
+        ErrorLog.add({
+          message: 'Custom API key rejected (' + errMsg + '). Automatically reset to default shared key.',
+          status: res.status,
+          errorDetail: data.error
+        });
+        if (retryCount < 2) {
+          return callGemini(retryCount + 1);
+        }
+      }
+
       if ((res.status === 503 || data.error.code === 503) && retryCount < 1) {
         await new Promise(r => setTimeout(r, 1500));
         return callGemini(retryCount + 1);
       }
-      const err = new Error(data.error.message);
-      err.isQuota = isQuotaError(data.error.message) || res.status === 429 || res.status === 403;
+
+      const err = new Error(data.error.message || ('HTTP ' + res.status));
+      err.status = res.status;
+      err.data = data.error;
+      err.isQuota = isQuotaError(data.error.message) || res.status === 429;
       throw err;
     }
-    return data.candidates[0].content.parts[0].text;
+
+    if (!data.candidates || data.candidates.length === 0) {
+      const promptFeedback = data.promptFeedback ? JSON.stringify(data.promptFeedback) : 'No candidate returned';
+      const err = new Error('No candidate returned: ' + promptFeedback);
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+
+    const firstCandidate = data.candidates[0];
+    if (firstCandidate.finishReason && firstCandidate.finishReason !== 'STOP' && firstCandidate.finishReason !== 'MAX_TOKENS') {
+      if (!firstCandidate.content) {
+        const err = new Error('Response stopped due to finishReason: ' + firstCandidate.finishReason);
+        err.finishReason = firstCandidate.finishReason;
+        err.data = firstCandidate;
+        throw err;
+      }
+    }
+
+    const text = firstCandidate.content?.parts?.[0]?.text;
+    if (typeof text !== 'string') {
+      const err = new Error('Empty response parts from model');
+      err.data = firstCandidate;
+      throw err;
+    }
+
+    return text;
   }
 
   // ── Turn logic ─────────────────────────────────────────────────────────────
   async function sendTurn(userText) {
+    let turnPushed = false;
     if (userText) {
       currentStory.history.push({ role: 'user', content: userText });
       addYouEntry(userText, currentStory.history.length - 1);
+      turnPushed = true;
     }
     sendBtn.disabled = true; inputEl.disabled = true;
     showThinking();
@@ -713,10 +931,25 @@ CRITICAL RULES:
       }
     } catch (err) {
       hideThinking();
+      // Roll back user turn to prevent orphaned history
+      if (turnPushed && currentStory) {
+        currentStory.history.pop();
+        if (inputEl.value === '') {
+          inputEl.value = userText;
+        }
+      }
+      ErrorLog.add({
+        message: err.message || 'Unknown error',
+        status: err.status || 0,
+        stack: err.stack,
+        errorDetail: err.data || null,
+        lastUserTurn: userText
+      });
+
       if (err.isQuota) {
         showQuotaModal();
       } else {
-        addNarration('(The thread frayed — something went wrong. Try again.)');
+        addFrayedNarration(err.message);
       }
       console.error(err);
     }
@@ -811,6 +1044,18 @@ CRITICAL RULES:
   document.getElementById('nbStepBtn')?.addEventListener('click', () => doStepDigest(150));
   document.getElementById('nbResetBtn')?.addEventListener('click', doResetDigestPointer);
 
+  exportLogBtn?.addEventListener('click', () => {
+    ErrorLog.download();
+  });
+
+  resetKeyBtn?.addEventListener('click', () => {
+    if (confirm("Reset custom API key and revert to Loomtale's default shared key?")) {
+      localStorage.removeItem('loomtale_user_key');
+      Sidebar.render();
+      alert("Custom API key removed. Loomtale is now using the default shared key.");
+    }
+  });
+
   versionBtn.addEventListener('click', () => changelogModal.classList.add('show'));
   clCloseBtn.addEventListener('click', () => changelogModal.classList.remove('show'));
 
@@ -821,6 +1066,7 @@ CRITICAL RULES:
       return;
     }
     localStorage.setItem('loomtale_user_key', val);
+    Sidebar.render();
     hideQuotaModal();
     addNarration('(Your key was saved. The story can now continue — send your next message.)');
   });
