@@ -4,7 +4,7 @@
   const MODEL       = 'gemini-3.5-flash-lite';
   const STORAGE_KEY = 'loomtale_stories';
   const LOG_STORAGE_KEY = 'loomtale_debug_logs';
-  const VERSION     = 'v1.3.3';
+  const VERSION     = 'v1.3.4';
 
   const SAFETY_SETTINGS = [
     { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
@@ -19,6 +19,9 @@
   const sidebarListEl   = document.getElementById('sidebarList');
   const sidebarCloseBtn = document.getElementById('sidebarClose');
   const sidebarNewBtn   = document.getElementById('sidebarNew');
+  const backupStoriesBtn = document.getElementById('backupStoriesBtn');
+  const importStoriesBtn = document.getElementById('importStoriesBtn');
+  const importFileInput  = document.getElementById('importFileInput');
   const exportLogBtn    = document.getElementById('exportLogBtn');
   const resetKeyBtn     = document.getElementById('resetKeyBtn');
   const burgerBtn       = document.getElementById('burgerBtn');
@@ -113,24 +116,199 @@ Never give multiple-choice menus (A/B/C). Never break character or explain story
 8. RESPONSE LENGTH & LANGUAGE MATCHING:
 Write 3 to 7 paragraphs per response. Match the language used by the player (if they write in Indonesian, reply in natural, atmospheric Indonesian; if in English, reply in English).`;
 
-  // ── Storage ────────────────────────────────────────────────────────────────
+  // ── IndexedDB Database Adapter ─────────────────────────────────────────────
+  const DB_NAME = 'loomtale_db';
+  const DB_VERSION = 1;
+  const STORE_NAME = 'stories';
+
+  const IDB = {
+    _db: null,
+    async init() {
+      if (typeof window === 'undefined' || !window.indexedDB) return null;
+      if (this._db) return this._db;
+      return new Promise(resolve => {
+        try {
+          const req = window.indexedDB.open(DB_NAME, DB_VERSION);
+          req.onupgradeneeded = e => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+              db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+            }
+          };
+          req.onsuccess = e => {
+            this._db = e.target.result;
+            resolve(this._db);
+          };
+          req.onerror = e => {
+            console.warn('IndexedDB open error:', e);
+            resolve(null);
+          };
+        } catch (e) {
+          console.warn('IndexedDB unavailable:', e);
+          resolve(null);
+        }
+      });
+    },
+    async getAll() {
+      const db = await this.init();
+      if (!db) return [];
+      return new Promise(resolve => {
+        try {
+          const tx = db.transaction(STORE_NAME, 'readonly');
+          const store = tx.objectStore(STORE_NAME);
+          const req = store.getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => resolve([]);
+        } catch (e) {
+          resolve([]);
+        }
+      });
+    },
+    async save(story) {
+      const db = await this.init();
+      if (!db) return false;
+      return new Promise(resolve => {
+        try {
+          const tx = db.transaction(STORE_NAME, 'readwrite');
+          const store = tx.objectStore(STORE_NAME);
+          store.put(story);
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+        } catch (e) {
+          resolve(false);
+        }
+      });
+    },
+    async delete(id) {
+      const db = await this.init();
+      if (!db) return false;
+      return new Promise(resolve => {
+        try {
+          const tx = db.transaction(STORE_NAME, 'readwrite');
+          const store = tx.objectStore(STORE_NAME);
+          store.delete(id);
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+        } catch (e) {
+          resolve(false);
+        }
+      });
+    }
+  };
+
+  // ── Unified Storage (In-Memory + IndexedDB + LocalStorage Fallback) ────────
+  function createLightweightStories(stories) {
+    return stories.map(s => {
+      const c = { ...s };
+      if (c.history && c.history.length > 20) {
+        c.history = c.history.slice(c.history.length - 20);
+      }
+      return c;
+    });
+  }
+
   const Storage = {
+    _cache: [],
+    _initialized: false,
+
+    _loadFromLocalStorage() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+      } catch {
+        return [];
+      }
+    },
+
+    initSync() {
+      if (this._initialized) return;
+      this._cache = this._loadFromLocalStorage();
+      this._initialized = true;
+    },
+
+    async initAsync() {
+      this.initSync();
+      try {
+        const idbStories = await IDB.getAll();
+        if (idbStories && idbStories.length > 0) {
+          const map = new Map();
+          idbStories.forEach(s => map.set(s.id, s));
+          this._cache.forEach(s => {
+            const existing = map.get(s.id);
+            if (!existing || (s.updatedAt || 0) > (existing.updatedAt || 0)) {
+              map.set(s.id, s);
+              IDB.save(s);
+            }
+          });
+          this._cache = Array.from(map.values());
+        } else if (this._cache.length > 0) {
+          // Initial migration: save all localStorage stories to IndexedDB
+          for (const s of this._cache) {
+            await IDB.save(s);
+          }
+        }
+      } catch (e) {
+        console.warn('Storage async sync notice:', e);
+      }
+
+      // If active currentStory in memory has fewer turns than IDB loaded, update it!
+      if (currentStory) {
+        const fresher = this.get(currentStory.id);
+        if (fresher && fresher.history && fresher.history.length > currentStory.history.length) {
+          currentStory = fresher;
+          loadStory(fresher.id);
+        }
+      }
+      Sidebar.render();
+      return this._cache;
+    },
+
     getAll() {
-      try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
-      catch { return []; }
+      this.initSync();
+      return this._cache;
     },
+
+    get(id) {
+      return this.getAll().find(s => s.id === id) || null;
+    },
+
     save(story) {
-      const all = this.getAll();
+      this.initSync();
       story.updatedAt = Date.now();
-      const idx = all.findIndex(s => s.id === story.id);
-      if (idx >= 0) all[idx] = story; else all.unshift(story);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+      const idx = this._cache.findIndex(s => s.id === story.id);
+      if (idx >= 0) this._cache[idx] = story;
+      else this._cache.unshift(story);
+
+      // 1. Asynchronously persist to unlimited IndexedDB
+      IDB.save(story);
+
+      // 2. Best-effort write to localStorage (will not crash if quota exceeded)
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(this._cache));
+      } catch (quotaErr) {
+        console.warn('localStorage quota full, story safely retained in IndexedDB:', quotaErr);
+        try {
+          const light = createLightweightStories(this._cache);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(light));
+        } catch {
+          // IndexedDB has the authoritative full history
+        }
+      }
     },
+
     delete(id) {
-      const all = this.getAll().filter(s => s.id !== id);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
-    },
-    get(id) { return this.getAll().find(s => s.id === id) || null; }
+      this.initSync();
+      this._cache = this._cache.filter(s => s.id !== id);
+      IDB.delete(id);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(this._cache));
+      } catch {
+        try {
+          const light = createLightweightStories(this._cache);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(light));
+        } catch {}
+      }
+    }
   };
 
   // ── Error Logging System ───────────────────────────────────────────────────
@@ -158,8 +336,12 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
           ...entry
         };
         logs.unshift(newEntry);
-        if (logs.length > 50) logs.length = 50;
-        localStorage.setItem(LOG_STORAGE_KEY, JSON.stringify(logs));
+        if (logs.length > 20) logs.length = 20;
+        try {
+          localStorage.setItem(LOG_STORAGE_KEY, JSON.stringify(logs));
+        } catch {
+          // In case localStorage is completely full, keep in memory without throwing
+        }
         return newEntry;
       } catch (e) {
         console.error('Failed to save error log', e);
@@ -508,9 +690,13 @@ CRITICAL RULES:
 
   // ── Init ───────────────────────────────────────────────────────────────────
   function init() {
+    Storage.initSync();
     const all = Storage.getAll().sort((a, b) => b.updatedAt - a.updatedAt);
     if (all.length > 0) loadStory(all[0].id);
     else showScreen('setup');
+
+    // Asynchronously connect to IndexedDB, merge & migrate
+    Storage.initAsync();
   }
 
   // ── Background & UI mood ───────────────────────────────────────────────────
@@ -924,7 +1110,11 @@ CRITICAL RULES:
       hideThinking();
       currentStory.history.push({ role: 'assistant', content: reply });
       parseAndRender(reply, currentStory.history.length - 1);
-      autosave();
+      try {
+        autosave();
+      } catch (saveErr) {
+        console.warn('Autosave notice:', saveErr);
+      }
 
       if (currentStory.history.length === 2 && currentStory.title === 'Untitled Story') {
         generateTitle(currentStory.premise, currentStory.id);
@@ -1043,6 +1233,72 @@ CRITICAL RULES:
   nbCloseBtn.addEventListener('click', closeNotebook);
   document.getElementById('nbStepBtn')?.addEventListener('click', () => doStepDigest(150));
   document.getElementById('nbResetBtn')?.addEventListener('click', doResetDigestPointer);
+
+  // ── Story Backup & Import ──────────────────────────────────────────────────
+  function backupStories() {
+    const stories = Storage.getAll();
+    if (stories.length === 0) {
+      alert("No stories to backup yet.");
+      return;
+    }
+    const jsonStr = JSON.stringify(stories, null, 2);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const filename = `loomtale-stories-backup-${dateStr}.json`;
+    try {
+      const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      alert("Backup error: " + e.message);
+    }
+  }
+
+  function handleImportFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const imported = JSON.parse(e.target.result);
+        if (!Array.isArray(imported)) {
+          alert("Invalid backup file: Expected a JSON array of stories.");
+          return;
+        }
+        let count = 0;
+        imported.forEach(s => {
+          if (s && s.id && s.title) {
+            Storage.save(s);
+            count++;
+          }
+        });
+        Sidebar.render();
+        alert(`Successfully imported ${count} story/stories!`);
+        if (count > 0 && !currentStory) {
+          loadStory(imported[0].id);
+        }
+      } catch (err) {
+        alert("Failed to parse backup file: " + err.message);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  backupStoriesBtn?.addEventListener('click', backupStories);
+  importStoriesBtn?.addEventListener('click', () => {
+    if (importFileInput) {
+      importFileInput.value = '';
+      importFileInput.click();
+    }
+  });
+  importFileInput?.addEventListener('change', e => {
+    const file = e.target.files?.[0];
+    if (file) handleImportFile(file);
+  });
 
   exportLogBtn?.addEventListener('click', () => {
     ErrorLog.download();

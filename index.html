@@ -165,10 +165,13 @@
   <div class="sidebar-list" id="sidebarList"></div>
   <div class="sidebar-foot">
     <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px;">
+      <button class="sidebar-tool-btn" id="backupStoriesBtn" title="Download backup file of all stories">💾 Backup Stories (JSON)</button>
+      <button class="sidebar-tool-btn" id="importStoriesBtn" title="Import stories from a JSON backup file">📂 Import Stories</button>
+      <input type="file" id="importFileInput" accept=".json" style="display: none;" />
       <button class="sidebar-tool-btn" id="exportLogBtn" title="Download diagnostic debug log">📥 Export Debug Log</button>
       <button class="sidebar-tool-btn" id="resetKeyBtn" title="Reset custom API key back to default" style="display: none; border-color: rgba(201,122,122,0.4); color: #c97a7a;">🔑 Reset API Key</button>
     </div>
-    <button class="version-btn" id="versionBtn">v1.3.3</button>
+    <button class="version-btn" id="versionBtn">v1.3.4</button>
   </div>
 </div>
 <div class="sidebar-backdrop" id="backdrop"></div>
@@ -247,13 +250,19 @@
 <div class="modal-wrap" id="changelogModal">
   <div class="modal">
     <div class="modal-icon">🏷️</div>
-    <h2>Loomtale Updates — v1.3.3</h2>
+    <h2>Loomtale Updates — v1.3.4</h2>
     <div class="modal-body">
-      <h4>What's New in v1.3.3</h4>
+      <h4>What's New in v1.3.4</h4>
       <ul>
-        <li><strong>🔍 In-Chat Error Transparency</strong>: If the thread frays, the exact failure reason (HTTP error, API key issue, or filter trigger) is displayed directly in chat with an instant 1-tap Copy button.</li>
-        <li><strong>📥 Diagnostic Log Export</strong>: Persistent in-app debug log system. Easily download a diagnostic file or view recorded errors from the sidebar and chat.</li>
-        <li><strong>🛡️ Auto-Recovery &amp; Safety Relaxations</strong>: Automatically detects and purges invalid or expired custom API keys to instantly fall back to default shared keys, and sets safety thresholds to BLOCK_NONE for uninterrupted creative storytelling.</li>
+        <li><strong>📦 Unlimited Story Capacity with IndexedDB</strong>: Migrated story storage from browser localStorage (5MB cap) to native IndexedDB. Long epics with thousands of turns and full sensory detail will never hit browser quota errors again.</li>
+        <li><strong>🛡️ QuotaExceeded Shield &amp; Seamless Auto-Migration</strong>: Existing stories are automatically migrated on launch. Storage saves are fully isolated so quota warnings never disrupt narrative generation or fray threads.</li>
+        <li><strong>💾 1-Click Backup &amp; Restore</strong>: Export all your stories as a JSON backup file or import past stories across devices and browsers anytime via the sidebar.</li>
+      </ul>
+      <h4>v1.3.3</h4>
+      <ul>
+        <li><strong>🔍 In-Chat Error Transparency</strong>: Shows exact failure reasons in chat with an instant 1-tap Copy button.</li>
+        <li><strong>📥 Diagnostic Log Export</strong>: Persistent in-app debug log system with exportable report.</li>
+        <li><strong>🛡️ Auto-Recovery &amp; Safety Relaxations</strong>: Automatic key fallback and BLOCK_NONE filters.</li>
       </ul>
       <h4>v1.3.2</h4>
       <ul>
