@@ -1,10 +1,10 @@
 (function () {
   // ── Constants ──────────────────────────────────────────────────────────────
   const DEFAULT_KEY = atob('QVEuQWI4Uk42S1JVS05HUm9qZlpYdnJBV1JiZld1MlNicld3YlZLdTlURnFDMEgwemQ4TWc=');
-  const MODEL       = 'gemini-3.5-flash-lite';
+  const MODEL       = 'gemini-3.1-flash-lite';
   const STORAGE_KEY = 'loomtale_stories';
   const LOG_STORAGE_KEY = 'loomtale_debug_logs';
-  const VERSION     = 'v1.3.4';
+  const VERSION     = 'v1.3.5';
 
   const SAFETY_SETTINGS = [
     { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
