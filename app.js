@@ -2,12 +2,14 @@
   // ── Constants ──────────────────────────────────────────────────────────────
   const DEFAULT_KEY = atob('QVEuQWI4Uk42S1JVS05HUm9qZlpYdnJBV1JiZld1MlNicld3YlZLdTlURnFDMEgwemQ4TWc=');
   const DEFAULT_NEVAGATE_KEY = 'sk-nevagate-f12af45f279ead3d86e6d89df644d053';
-  const DEFAULT_MODEL = 'nevagate:deepseek-v4-pro';
+  const DEFAULT_MODEL = 'auto';
+  const NEVAGATE_PIN = '123123';
+  const NEVAGATE_PIN_SESSION_KEY = 'loomtale_nevagate_unlocked';
   const STORAGE_KEY = 'loomtale_stories';
   const LOG_STORAGE_KEY = 'loomtale_debug_logs';
   const MODEL_STORAGE_KEY = 'loomtale_selected_model';
   const NEVAGATE_KEY_STORAGE = 'loomtale_nevagate_key';
-  const VERSION     = 'v1.4.0-staging';
+  const VERSION     = 'v1.4.0';
 
   const MODELS_AUTO_CHAIN = [
     'gemini-3.5-flash-lite',
@@ -16,8 +18,24 @@
     'gemini-3.5-flash'
   ];
 
+  function isNevagateUnlocked() {
+    try {
+      return sessionStorage.getItem(NEVAGATE_PIN_SESSION_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  }
+
   function getTargetModels() {
-    const selected = localStorage.getItem(MODEL_STORAGE_KEY) || DEFAULT_MODEL;
+    let selected = localStorage.getItem(MODEL_STORAGE_KEY) || DEFAULT_MODEL;
+    if (selected && selected.startsWith('nevagate:')) {
+      if (!isNevagateUnlocked()) {
+        console.warn('Nevagate locked: PIN required. Falling back to Gemini auto cascade.');
+        selected = 'auto';
+        localStorage.setItem(MODEL_STORAGE_KEY, 'auto');
+        if (modelSelectEl) modelSelectEl.value = 'auto';
+      }
+    }
     if (selected && selected !== 'auto') {
       return [selected];
     }
@@ -472,22 +490,29 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
     try {
       const activeModel = getTargetModels()[0];
       if (activeModel.startsWith('nevagate:')) {
-        const text = await callNevagate(
-          activeModel,
-          'You are an evocative novel title generator. Reply with ONLY the title, no quotes, no period.',
-          [{ role: 'user', content: `Generate a single evocative title for a story with this premise: "${premise}". 2-5 words, atmospheric and intriguing.` }]
-        );
-        const title = text ? text.replace(/["']/g, '').trim() : null;
-        if (!title) return;
-        const story = Storage.get(storyId);
-        if (story) { story.title = title; Storage.save(story); }
-        if (currentStory && currentStory.id === storyId) currentStory.title = title;
-        Sidebar.render();
-        return;
+        try {
+          const text = await callNevagate(
+            activeModel,
+            'You are an evocative novel title generator. Reply with ONLY the title, no quotes, no period.',
+            [{ role: 'user', content: `Generate a single evocative title for a story with this premise: "${premise}". 2-5 words, atmospheric and intriguing.` }]
+          );
+          const title = text ? text.replace(/["']/g, '').trim() : null;
+          if (title) {
+            const story = Storage.get(storyId);
+            if (story) { story.title = title; Storage.save(story); }
+            if (currentStory && currentStory.id === storyId) currentStory.title = title;
+            Sidebar.render();
+            return;
+          }
+        } catch (nevTitleErr) {
+          console.warn('Nevagate title generation failed, falling back to Gemini Free...', nevTitleErr);
+          // Never retry another Nevagate model; fall through to Gemini Free below!
+        }
       }
 
+      const geminiModel = activeModel.startsWith('nevagate:') ? MODELS_AUTO_CHAIN[0] : activeModel;
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${getActiveKey()}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${getActiveKey()}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -564,10 +589,18 @@ CRITICAL RULES:
     const activeModel = getTargetModels()[0];
     let rawText = '';
     if (activeModel.startsWith('nevagate:')) {
-      rawText = await callNevagate(activeModel, 'You are a story digest analyzer. Update and return ONLY a valid JSON object.', [{ role: 'user', content: prompt }]);
-    } else {
+      try {
+        rawText = await callNevagate(activeModel, 'You are a story digest analyzer. Update and return ONLY a valid JSON object.', [{ role: 'user', content: prompt }]);
+      } catch (nevDigestErr) {
+        console.warn('Nevagate digest failed, falling back to Gemini Free...', nevDigestErr);
+        // Never retry another Nevagate model; fall through to Gemini Free below!
+      }
+    }
+
+    if (!rawText) {
+      const geminiModel = activeModel.startsWith('nevagate:') ? MODELS_AUTO_CHAIN[0] : activeModel;
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${getActiveKey()}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${getActiveKey()}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -688,7 +721,11 @@ CRITICAL RULES:
       }
 
       if (modelSelectEl) {
-        modelSelectEl.value = localStorage.getItem(MODEL_STORAGE_KEY) || DEFAULT_MODEL;
+        let cur = localStorage.getItem(MODEL_STORAGE_KEY) || DEFAULT_MODEL;
+        if (cur.startsWith('nevagate:') && !isNevagateUnlocked()) {
+          cur = 'auto';
+        }
+        modelSelectEl.value = cur;
       }
     }
   };
@@ -745,10 +782,42 @@ CRITICAL RULES:
     Storage.initSync();
 
     if (modelSelectEl) {
-      const savedModel = localStorage.getItem(MODEL_STORAGE_KEY) || DEFAULT_MODEL;
+      let savedModel = localStorage.getItem(MODEL_STORAGE_KEY) || DEFAULT_MODEL;
+      if (savedModel.startsWith('nevagate:') && !isNevagateUnlocked()) {
+        savedModel = 'auto';
+        localStorage.setItem(MODEL_STORAGE_KEY, 'auto');
+      }
       modelSelectEl.value = savedModel;
+
+      let currentModelVal = modelSelectEl.value;
+
       modelSelectEl.addEventListener('change', () => {
-        localStorage.setItem(MODEL_STORAGE_KEY, modelSelectEl.value);
+        const chosen = modelSelectEl.value;
+        if (chosen.startsWith('nevagate:')) {
+          if (!isNevagateUnlocked()) {
+            const entered = prompt("🔒 Masukkan PIN Code (6-digit) untuk mengaktifkan model Nevagate Premium:");
+            if (entered === NEVAGATE_PIN) {
+              try {
+                sessionStorage.setItem(NEVAGATE_PIN_SESSION_KEY, 'true');
+              } catch (e) {}
+              localStorage.setItem(MODEL_STORAGE_KEY, chosen);
+              currentModelVal = chosen;
+              alert("✅ Model Nevagate Premium aktif.");
+            } else {
+              alert("❌ PIN salah atau dibatalkan. Model premium terkunci.");
+              const fallback = (currentModelVal && !currentModelVal.startsWith('nevagate:')) ? currentModelVal : 'auto';
+              modelSelectEl.value = fallback;
+              localStorage.setItem(MODEL_STORAGE_KEY, fallback);
+              return;
+            }
+          } else {
+            localStorage.setItem(MODEL_STORAGE_KEY, chosen);
+            currentModelVal = chosen;
+          }
+        } else {
+          localStorage.setItem(MODEL_STORAGE_KEY, chosen);
+          currentModelVal = chosen;
+        }
       });
     }
 
@@ -1100,7 +1169,7 @@ CRITICAL RULES:
     return text;
   }
 
-  async function callGemini(modelIndex = 0, retryCount = 0) {
+  async function callGemini(modelIndex = 0, retryCount = 0, forceGeminiChain = false) {
     let key = getActiveKey();
     if (!key) {
       const err = new Error("No API key configured");
@@ -1108,7 +1177,7 @@ CRITICAL RULES:
       throw err;
     }
 
-    const targetModels = getTargetModels();
+    const targetModels = forceGeminiChain ? MODELS_AUTO_CHAIN : getTargetModels();
     const currentModel = targetModels[modelIndex] || targetModels[0];
 
     let contents = [];
@@ -1138,7 +1207,22 @@ CRITICAL RULES:
     }));
 
     if (currentModel.startsWith('nevagate:')) {
-      return callNevagate(currentModel, sysPrompt, contents);
+      try {
+        return await callNevagate(currentModel, sysPrompt, contents);
+      } catch (nevErr) {
+        console.warn(`Nevagate (${currentModel}) error: ${nevErr.message}. Safe failover to Gemini Free (never to another paid model)...`);
+        ErrorLog.add({
+          message: `Nevagate model ${currentModel} failed (${nevErr.message}). Safe auto-failover to Gemini Free Tier.`,
+          status: nevErr.status || 0,
+          model: currentModel,
+          errorDetail: nevErr.data || null
+        });
+        if (thinkingEl) {
+          thinkingEl.innerHTML = `Nevagate busy/offline, switching to Gemini Free <span class="dot"></span><span class="dot"></span><span class="dot"></span>`;
+        }
+        // ZERO PAID FAILOVER: Never switch to another Nevagate model; failover strictly to Gemini Free:
+        return callGemini(0, 0, true);
+      }
     }
 
     let res;
@@ -1167,7 +1251,7 @@ CRITICAL RULES:
         if (thinkingEl) {
           thinkingEl.innerHTML = `Switching engine to ${nextModel} <span class="dot"></span><span class="dot"></span><span class="dot"></span>`;
         }
-        return callGemini(modelIndex + 1, 0);
+        return callGemini(modelIndex + 1, 0, forceGeminiChain);
       }
       const err = new Error("Network connection failed: " + networkErr.message);
       err.network = true;
@@ -1199,7 +1283,7 @@ CRITICAL RULES:
           errorDetail: data.error
         });
         if (retryCount < 2) {
-          return callGemini(modelIndex, retryCount + 1);
+          return callGemini(modelIndex, retryCount + 1, forceGeminiChain);
         }
       }
 
@@ -1210,7 +1294,7 @@ CRITICAL RULES:
         if (thinkingEl) {
           thinkingEl.innerHTML = `Switching engine to ${nextModel} <span class="dot"></span><span class="dot"></span><span class="dot"></span>`;
         }
-        return callGemini(modelIndex + 1, 0);
+        return callGemini(modelIndex + 1, 0, forceGeminiChain);
       }
 
       if ((res.status === 503 || data.error.code === 503) && retryCount < 1) {

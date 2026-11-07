@@ -1,4 +1,14 @@
-﻿# Changelog
+# Changelog
+
+## [1.4.0] - 2026-11-08
+
+### Added
+- 🔒 **PIN-Protected Nevagate Premium Models**: Curated low-multiplier models (DeepSeek V4 Pro, DeepSeek V4 Flash, GLM 5.2, MiMo V2.5 Pro, Kimi K2.7 Code) guarded by PIN code (`123123`) to prevent unauthorized usage.
+- 🛡️ **Zero-Paid-Failover Rule**: Any error or high demand on a Nevagate model strictly fails over to the Gemini Free Tier cascade, never to another paid model.
+- ⚡ **Vercel Serverless CORS Relay**: High-performance `/api/nevagate` edge handler bypassing browser CORS restrictions.
+
+## [1.3.6] - 2026-11-07
+- Model switcher dropdown with smart Gemini auto-failover cascade.
 
 ## [1.2.0] - 2026-10-05
 
