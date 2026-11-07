@@ -1,10 +1,26 @@
 (function () {
   // ── Constants ──────────────────────────────────────────────────────────────
   const DEFAULT_KEY = atob('QVEuQWI4Uk42S1JVS05HUm9qZlpYdnJBV1JiZld1MlNicld3YlZLdTlURnFDMEgwemQ4TWc=');
-  const MODEL       = 'gemini-3.1-flash-lite';
+  const DEFAULT_MODEL = 'gemini-3.5-flash-lite';
   const STORAGE_KEY = 'loomtale_stories';
   const LOG_STORAGE_KEY = 'loomtale_debug_logs';
-  const VERSION     = 'v1.3.5';
+  const MODEL_STORAGE_KEY = 'loomtale_selected_model';
+  const VERSION     = 'v1.3.6';
+
+  const MODELS_AUTO_CHAIN = [
+    'gemini-3.5-flash-lite',
+    'gemini-flash-lite-latest',
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash'
+  ];
+
+  function getTargetModels() {
+    const selected = localStorage.getItem(MODEL_STORAGE_KEY) || 'auto';
+    if (selected && selected !== 'auto') {
+      return [selected];
+    }
+    return MODELS_AUTO_CHAIN;
+  }
 
   const SAFETY_SETTINGS = [
     { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
@@ -19,6 +35,7 @@
   const sidebarListEl   = document.getElementById('sidebarList');
   const sidebarCloseBtn = document.getElementById('sidebarClose');
   const sidebarNewBtn   = document.getElementById('sidebarNew');
+  const modelSelectEl   = document.getElementById('modelSelect');
   const backupStoriesBtn = document.getElementById('backupStoriesBtn');
   const importStoriesBtn = document.getElementById('importStoriesBtn');
   const importFileInput  = document.getElementById('importFileInput');
@@ -332,6 +349,7 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
           maskedKey,
           storyId: currentStory ? currentStory.id : null,
           storyTitle: currentStory ? currentStory.title : 'None',
+          selectedEngine: localStorage.getItem(MODEL_STORAGE_KEY) || 'auto',
           turnCount: currentStory ? currentStory.history.length : 0,
           ...entry
         };
@@ -362,6 +380,7 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
                  `Browser/Device : ${navigator.userAgent}\n` +
                  `Screen Size    : ${window.innerWidth}x${window.innerHeight}\n` +
                  `Custom API Key : ${customKey ? 'Configured (' + customKey.slice(0, 6) + '...' + customKey.slice(-4) + ')' : 'Using Default Server Key'}\n` +
+                 `Selected Engine: ${localStorage.getItem(MODEL_STORAGE_KEY) || 'auto'}\n` +
                  `Total Stories  : ${allStories.length}\n`;
 
       if (allStories.length > 0) {
@@ -444,8 +463,9 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
 
   async function generateTitle(premise, storyId) {
     try {
+      const activeModel = getTargetModels()[0];
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${getActiveKey()}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${getActiveKey()}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -519,8 +539,9 @@ CRITICAL RULES:
 2. Preserve all important past facts while integrating new developments.
 3. Reply with ONLY raw JSON, no markdown codeblocks or extra text.`;
 
+    const activeModel = getTargetModels()[0];
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${getActiveKey()}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${getActiveKey()}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -638,6 +659,10 @@ CRITICAL RULES:
         const hasCustomKey = !!(localStorage.getItem('loomtale_user_key') && localStorage.getItem('loomtale_user_key').trim());
         resetKeyBtn.style.display = hasCustomKey ? 'block' : 'none';
       }
+
+      if (modelSelectEl) {
+        modelSelectEl.value = localStorage.getItem(MODEL_STORAGE_KEY) || 'auto';
+      }
     }
   };
 
@@ -691,6 +716,15 @@ CRITICAL RULES:
   // ── Init ───────────────────────────────────────────────────────────────────
   function init() {
     Storage.initSync();
+
+    if (modelSelectEl) {
+      const savedModel = localStorage.getItem(MODEL_STORAGE_KEY) || 'auto';
+      modelSelectEl.value = savedModel;
+      modelSelectEl.addEventListener('change', () => {
+        localStorage.setItem(MODEL_STORAGE_KEY, modelSelectEl.value);
+      });
+    }
+
     const all = Storage.getAll().sort((a, b) => b.updatedAt - a.updatedAt);
     if (all.length > 0) loadStory(all[0].id);
     else showScreen('setup');
@@ -971,13 +1005,16 @@ CRITICAL RULES:
       msg.includes('limit') || msg.includes('429') || msg.includes('exhausted'));
   }
 
-  async function callGemini(retryCount = 0) {
+  async function callGemini(modelIndex = 0, retryCount = 0) {
     let key = getActiveKey();
     if (!key) {
       const err = new Error("No API key configured");
       err.isQuota = true;
       throw err;
     }
+
+    const targetModels = getTargetModels();
+    const currentModel = targetModels[modelIndex] || targetModels[0];
 
     let contents = [];
     const hist = currentStory.history;
@@ -1008,7 +1045,7 @@ CRITICAL RULES:
     let res;
     try {
       res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${key}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1024,8 +1061,18 @@ CRITICAL RULES:
         }
       );
     } catch (networkErr) {
+      // If network fails and another fallback model exists in chain:
+      if (modelIndex < targetModels.length - 1) {
+        const nextModel = targetModels[modelIndex + 1];
+        console.warn(`Network fail on ${currentModel}: ${networkErr.message}. Auto-switching to ${nextModel}...`);
+        if (thinkingEl) {
+          thinkingEl.innerHTML = `Switching engine to ${nextModel} <span class="dot"></span><span class="dot"></span><span class="dot"></span>`;
+        }
+        return callGemini(modelIndex + 1, 0);
+      }
       const err = new Error("Network connection failed: " + networkErr.message);
       err.network = true;
+      err.model = currentModel;
       throw err;
     }
 
@@ -1035,6 +1082,7 @@ CRITICAL RULES:
     } catch (parseErr) {
       const err = new Error(`Server returned HTTP ${res.status} with non-JSON response`);
       err.status = res.status;
+      err.model = currentModel;
       throw err;
     }
 
@@ -1048,21 +1096,33 @@ CRITICAL RULES:
         ErrorLog.add({
           message: 'Custom API key rejected (' + errMsg + '). Automatically reset to default shared key.',
           status: res.status,
+          model: currentModel,
           errorDetail: data.error
         });
         if (retryCount < 2) {
-          return callGemini(retryCount + 1);
+          return callGemini(modelIndex, retryCount + 1);
         }
+      }
+
+      // Auto-failover: If model is overloaded (503 / UNAVAILABLE / 429) and there is a next model in targetModels:
+      if ((res.status === 503 || data.error.code === 503 || res.status === 429) && modelIndex < targetModels.length - 1) {
+        const nextModel = targetModels[modelIndex + 1];
+        console.warn(`Model ${currentModel} returned ${res.status} (${errMsg}). Auto-switching engine to ${nextModel}...`);
+        if (thinkingEl) {
+          thinkingEl.innerHTML = `Switching engine to ${nextModel} <span class="dot"></span><span class="dot"></span><span class="dot"></span>`;
+        }
+        return callGemini(modelIndex + 1, 0);
       }
 
       if ((res.status === 503 || data.error.code === 503) && retryCount < 1) {
         await new Promise(r => setTimeout(r, 1500));
-        return callGemini(retryCount + 1);
+        return callGemini(modelIndex, retryCount + 1);
       }
 
       const err = new Error(data.error.message || ('HTTP ' + res.status));
       err.status = res.status;
       err.data = data.error;
+      err.model = currentModel;
       err.isQuota = isQuotaError(data.error.message) || res.status === 429;
       throw err;
     }
@@ -1071,6 +1131,7 @@ CRITICAL RULES:
       const promptFeedback = data.promptFeedback ? JSON.stringify(data.promptFeedback) : 'No candidate returned';
       const err = new Error('No candidate returned: ' + promptFeedback);
       err.status = res.status;
+      err.model = currentModel;
       err.data = data;
       throw err;
     }
@@ -1080,6 +1141,7 @@ CRITICAL RULES:
       if (!firstCandidate.content) {
         const err = new Error('Response stopped due to finishReason: ' + firstCandidate.finishReason);
         err.finishReason = firstCandidate.finishReason;
+        err.model = currentModel;
         err.data = firstCandidate;
         throw err;
       }
@@ -1088,6 +1150,7 @@ CRITICAL RULES:
     const text = firstCandidate.content?.parts?.[0]?.text;
     if (typeof text !== 'string') {
       const err = new Error('Empty response parts from model');
+      err.model = currentModel;
       err.data = firstCandidate;
       throw err;
     }
@@ -1131,6 +1194,7 @@ CRITICAL RULES:
       ErrorLog.add({
         message: err.message || 'Unknown error',
         status: err.status || 0,
+        model: err.model || 'Unknown',
         stack: err.stack,
         errorDetail: err.data || null,
         lastUserTurn: userText

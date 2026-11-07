@@ -62,6 +62,11 @@
   .sidebar-foot { padding: 12px 14px; border-top: 1px solid rgba(201,164,100,0.1); text-align: center; }
   .sidebar-tool-btn { background: transparent; border: 1px solid rgba(201,164,100,0.25); color: var(--mist); font-size: 11px; padding: 7px 10px; border-radius: 6px; cursor: pointer; transition: all 0.2s; width: 100%; text-align: center; }
   .sidebar-tool-btn:hover { border-color: var(--gold); color: var(--moon); background: rgba(201,164,100,0.08); }
+  .sidebar-model-wrap { display: flex; flex-direction: column; gap: 5px; text-align: left; margin-bottom: 12px; }
+  .sidebar-model-label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--gold); opacity: 0.9; font-weight: 600; }
+  .sidebar-model-select { width: 100%; background: rgba(237, 230, 211, 0.05); border: 1px solid rgba(201,164,100,0.3); color: var(--moon); padding: 8px 10px; border-radius: 6px; font-size: 11px; outline: none; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+  .sidebar-model-select:focus { border-color: var(--gold); background: rgba(201,164,100,0.1); }
+  .sidebar-model-select option { background: #0b0d18; color: var(--moon); }
   .version-btn { background: none; border: none; color: var(--mist-dim); font-size: 11px; letter-spacing: 1px; cursor: pointer; transition: color 0.2s; }
   .version-btn:hover { color: var(--gold); }
 
@@ -164,6 +169,16 @@
   <button class="sidebar-new-btn" id="sidebarNew">+ New Story</button>
   <div class="sidebar-list" id="sidebarList"></div>
   <div class="sidebar-foot">
+    <div class="sidebar-model-wrap">
+      <label for="modelSelect" class="sidebar-model-label">⚙️ Engine / Model</label>
+      <select id="modelSelect" class="sidebar-model-select">
+        <option value="auto">⚡ Auto (Smart Failover)</option>
+        <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite (Fast)</option>
+        <option value="gemini-flash-lite-latest">Gemini Flash-Lite Latest</option>
+        <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
+        <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+      </select>
+    </div>
     <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px;">
       <button class="sidebar-tool-btn" id="backupStoriesBtn" title="Download backup file of all stories">💾 Backup Stories (JSON)</button>
       <button class="sidebar-tool-btn" id="importStoriesBtn" title="Import stories from a JSON backup file">📂 Import Stories</button>
@@ -171,7 +186,7 @@
       <button class="sidebar-tool-btn" id="exportLogBtn" title="Download diagnostic debug log">📥 Export Debug Log</button>
       <button class="sidebar-tool-btn" id="resetKeyBtn" title="Reset custom API key back to default" style="display: none; border-color: rgba(201,122,122,0.4); color: #c97a7a;">🔑 Reset API Key</button>
     </div>
-    <button class="version-btn" id="versionBtn">v1.3.5</button>
+    <button class="version-btn" id="versionBtn">v1.3.6</button>
   </div>
 </div>
 <div class="sidebar-backdrop" id="backdrop"></div>
@@ -250,12 +265,16 @@
 <div class="modal-wrap" id="changelogModal">
   <div class="modal">
     <div class="modal-icon">🏷️</div>
-    <h2>Loomtale Updates — v1.3.5</h2>
+    <h2>Loomtale Updates — v1.3.6</h2>
     <div class="modal-body">
-      <h4>What's New in v1.3.5</h4>
+      <h4>What's New in v1.3.6</h4>
+      <ul>
+        <li><strong>🎛️ Engine Switcher Dropdown</strong>: Easily switch between Gemini models (Gemini 3.5 Flash-Lite, Gemini Flash-Lite Latest, Gemini 3.1 Flash-Lite, or Gemini 3.5 Flash) directly from the sidebar. Your preference is saved across sessions.</li>
+        <li><strong>⚡ Smart Auto-Failover Cascade</strong>: In "Auto" mode, Loomtale routes to the fastest available model and automatically falls back to secondary models if Google experiences high demand (HTTP 503/429), preventing frayed threads.</li>
+      </ul>
+      <h4>v1.3.5</h4>
       <ul>
         <li><strong>⚡ Ultra-Fast 2s Engine (Gemini 3.1 Flash-Lite)</strong>: Migrated storyteller engine to Gemini 3.1 Flash-Lite, cutting response latency from 15-20s down to ~2.3 seconds with 100% server availability and zero 503 high-demand stalls.</li>
-        <li><strong>🛡️ Instant Response Resilience</strong>: Eliminates Google server overload queue times for seamless, lightning-fast turn-by-turn interactive roleplay.</li>
       </ul>
       <h4>v1.3.4</h4>
       <ul>
