@@ -1,11 +1,13 @@
 (function () {
   // ── Constants ──────────────────────────────────────────────────────────────
   const DEFAULT_KEY = atob('QVEuQWI4Uk42S1JVS05HUm9qZlpYdnJBV1JiZld1MlNicld3YlZLdTlURnFDMEgwemQ4TWc=');
-  const DEFAULT_MODEL = 'gemini-3.5-flash-lite';
+  const DEFAULT_NEVAGATE_KEY = 'sk-nevagate-f12af45f279ead3d86e6d89df644d053';
+  const DEFAULT_MODEL = 'nevagate:deepseek-v4-pro';
   const STORAGE_KEY = 'loomtale_stories';
   const LOG_STORAGE_KEY = 'loomtale_debug_logs';
   const MODEL_STORAGE_KEY = 'loomtale_selected_model';
-  const VERSION     = 'v1.3.6';
+  const NEVAGATE_KEY_STORAGE = 'loomtale_nevagate_key';
+  const VERSION     = 'v1.4.0-staging';
 
   const MODELS_AUTO_CHAIN = [
     'gemini-3.5-flash-lite',
@@ -15,11 +17,16 @@
   ];
 
   function getTargetModels() {
-    const selected = localStorage.getItem(MODEL_STORAGE_KEY) || 'auto';
+    const selected = localStorage.getItem(MODEL_STORAGE_KEY) || DEFAULT_MODEL;
     if (selected && selected !== 'auto') {
       return [selected];
     }
     return MODELS_AUTO_CHAIN;
+  }
+
+  function getActiveNevagateKey() {
+    const k = localStorage.getItem(NEVAGATE_KEY_STORAGE);
+    return (k && k.trim()) ? k.trim() : DEFAULT_NEVAGATE_KEY;
   }
 
   const SAFETY_SETTINGS = [
@@ -464,6 +471,21 @@ Write 3 to 7 paragraphs per response. Match the language used by the player (if 
   async function generateTitle(premise, storyId) {
     try {
       const activeModel = getTargetModels()[0];
+      if (activeModel.startsWith('nevagate:')) {
+        const text = await callNevagate(
+          activeModel,
+          'You are an evocative novel title generator. Reply with ONLY the title, no quotes, no period.',
+          [{ role: 'user', content: `Generate a single evocative title for a story with this premise: "${premise}". 2-5 words, atmospheric and intriguing.` }]
+        );
+        const title = text ? text.replace(/["']/g, '').trim() : null;
+        if (!title) return;
+        const story = Storage.get(storyId);
+        if (story) { story.title = title; Storage.save(story); }
+        if (currentStory && currentStory.id === storyId) currentStory.title = title;
+        Sidebar.render();
+        return;
+      }
+
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${getActiveKey()}`,
         {
@@ -540,24 +562,29 @@ CRITICAL RULES:
 3. Reply with ONLY raw JSON, no markdown codeblocks or extra text.`;
 
     const activeModel = getTargetModels()[0];
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${getActiveKey()}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          safetySettings: SAFETY_SETTINGS,
-          generationConfig: {
-            maxOutputTokens: 4000,
-            thinkingConfig: { thinkingLevel: 'low' }
-          }
-        })
-      }
-    );
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+    let rawText = '';
+    if (activeModel.startsWith('nevagate:')) {
+      rawText = await callNevagate(activeModel, 'You are a story digest analyzer. Update and return ONLY a valid JSON object.', [{ role: 'user', content: prompt }]);
+    } else {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${getActiveKey()}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            safetySettings: SAFETY_SETTINGS,
+            generationConfig: {
+              maxOutputTokens: 4000,
+              thinkingConfig: { thinkingLevel: 'low' }
+            }
+          })
+        }
+      );
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      rawText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+    }
 
     const parsed = repairAndParseJSON(rawText);
     if (!parsed || typeof parsed !== 'object') throw new Error("Invalid JSON returned from API");
@@ -661,7 +688,7 @@ CRITICAL RULES:
       }
 
       if (modelSelectEl) {
-        modelSelectEl.value = localStorage.getItem(MODEL_STORAGE_KEY) || 'auto';
+        modelSelectEl.value = localStorage.getItem(MODEL_STORAGE_KEY) || DEFAULT_MODEL;
       }
     }
   };
@@ -718,7 +745,7 @@ CRITICAL RULES:
     Storage.initSync();
 
     if (modelSelectEl) {
-      const savedModel = localStorage.getItem(MODEL_STORAGE_KEY) || 'auto';
+      const savedModel = localStorage.getItem(MODEL_STORAGE_KEY) || DEFAULT_MODEL;
       modelSelectEl.value = savedModel;
       modelSelectEl.addEventListener('change', () => {
         localStorage.setItem(MODEL_STORAGE_KEY, modelSelectEl.value);
@@ -1005,6 +1032,74 @@ CRITICAL RULES:
       msg.includes('limit') || msg.includes('429') || msg.includes('exhausted'));
   }
 
+  async function callNevagate(modelName, sysPrompt, contents) {
+    const rawModel = modelName.replace(/^nevagate:/, '');
+    const key = getActiveNevagateKey();
+
+    const messages = [
+      { role: 'system', content: sysPrompt },
+      ...contents.map(msg => ({
+        role: (msg.role === 'assistant' || msg.role === 'model') ? 'assistant' : 'user',
+        content: msg.parts ? msg.parts[0]?.text : (msg.content || '')
+      }))
+    ];
+
+    let res;
+    try {
+      res = await fetch('/api/nevagate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + key
+        },
+        body: JSON.stringify({
+          model: rawModel,
+          messages,
+          max_tokens: 1500,
+          temperature: 0.7
+        })
+      });
+    } catch (networkErr) {
+      const err = new Error("Nevagate proxy connection failed: " + networkErr.message);
+      err.network = true;
+      err.model = modelName;
+      throw err;
+    }
+
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      const err = new Error(`Nevagate proxy returned HTTP ${res.status} with non-JSON response`);
+      err.status = res.status;
+      err.model = modelName;
+      throw err;
+    }
+
+    if (data.error) {
+      const errMsg = data.error.message || ('HTTP ' + res.status);
+      const err = new Error(errMsg);
+      err.status = res.status;
+      err.data = data.error;
+      err.model = modelName;
+      throw err;
+    }
+
+    const text = data.choices?.[0]?.message?.content?.trim();
+    if (!text) {
+      const err = new Error("Nevagate returned empty response");
+      err.model = modelName;
+      err.data = data;
+      throw err;
+    }
+
+    if (data.usage) {
+      console.log(`[Nevagate Usage - ${rawModel}] Prompt: ${data.usage.prompt_tokens}, Completion: ${data.usage.completion_tokens}, Total: ${data.usage.total_tokens}`);
+    }
+
+    return text;
+  }
+
   async function callGemini(modelIndex = 0, retryCount = 0) {
     let key = getActiveKey();
     if (!key) {
@@ -1041,6 +1136,10 @@ CRITICAL RULES:
       role: msg.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: msg.content }]
     }));
+
+    if (currentModel.startsWith('nevagate:')) {
+      return callNevagate(currentModel, sysPrompt, contents);
+    }
 
     let res;
     try {

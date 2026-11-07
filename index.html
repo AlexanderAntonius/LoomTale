@@ -69,6 +69,7 @@
   .sidebar-model-select option { background: #0b0d18; color: var(--moon); }
   .version-btn { background: none; border: none; color: var(--mist-dim); font-size: 11px; letter-spacing: 1px; cursor: pointer; transition: color 0.2s; }
   .version-btn:hover { color: var(--gold); }
+  .staging-badge { background: rgba(207, 122, 74, 0.25); border: 1px solid rgba(207, 122, 74, 0.6); color: #cf7a4a; font-size: 9px; padding: 2px 6px; border-radius: 4px; letter-spacing: 1px; font-weight: bold; margin-left: 6px; vertical-align: middle; }
 
   .story-card { display: flex; align-items: center; gap: 8px; padding: 11px 14px; cursor: pointer; border-left: 2px solid transparent; transition: background 0.15s, border-color 0.15s; }
   .story-card:hover { background: rgba(237,230,211,0.04); }
@@ -172,11 +173,20 @@
     <div class="sidebar-model-wrap">
       <label for="modelSelect" class="sidebar-model-label">⚙️ Engine / Model</label>
       <select id="modelSelect" class="sidebar-model-select">
-        <option value="auto">⚡ Auto (Smart Failover)</option>
-        <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite (Fast)</option>
-        <option value="gemini-flash-lite-latest">Gemini Flash-Lite Latest</option>
-        <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
-        <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+        <optgroup label="💎 Nevagate (Paid / Premium)">
+          <option value="nevagate:deepseek-v4-pro">DeepSeek V4 Pro (1.15× - Hemat)</option>
+          <option value="nevagate:deepseek-v4-flash">DeepSeek V4 Flash (2×)</option>
+          <option value="nevagate:glm-5.2">GLM 5.2 (1.25×)</option>
+          <option value="nevagate:mimo-v2.5-pro">Mimo V2.5 Pro (1.4×)</option>
+          <option value="nevagate:kimi-k2.7-code">Kimi K2.7 Code (1×)</option>
+        </optgroup>
+        <optgroup label="⚡ Google Gemini (Free Tier)">
+          <option value="auto">Auto (Smart Gemini Failover)</option>
+          <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite (Fast)</option>
+          <option value="gemini-flash-lite-latest">Gemini Flash-Lite Latest</option>
+          <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
+          <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+        </optgroup>
       </select>
     </div>
     <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px;">
@@ -186,7 +196,7 @@
       <button class="sidebar-tool-btn" id="exportLogBtn" title="Download diagnostic debug log">📥 Export Debug Log</button>
       <button class="sidebar-tool-btn" id="resetKeyBtn" title="Reset custom API key back to default" style="display: none; border-color: rgba(201,122,122,0.4); color: #c97a7a;">🔑 Reset API Key</button>
     </div>
-    <button class="version-btn" id="versionBtn">v1.3.6</button>
+    <button class="version-btn" id="versionBtn">v1.4.0-staging</button>
   </div>
 </div>
 <div class="sidebar-backdrop" id="backdrop"></div>
@@ -195,7 +205,7 @@
 <div class="screen" id="setup" style="flex-direction: column; justify-content: flex-start; padding-top: 0;">
   <div class="topbar" style="width: 100%; border-bottom: 1px solid rgba(201,164,100,0.12);">
     <button class="burger-btn" id="setupBurgerBtn">☰</button>
-    <div class="topbar-title">✦ Loomtale</div>
+    <div class="topbar-title">✦ Loomtale <span class="staging-badge">STAGING</span></div>
   </div>
   <div style="flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; padding: 24px;">
     <div class="card">
@@ -213,7 +223,7 @@
 <div class="app" id="app">
   <div class="topbar">
     <button class="burger-btn" id="burgerBtn">☰</button>
-    <div class="topbar-title">✦ Loomtale</div>
+    <div class="topbar-title">✦ Loomtale <span class="staging-badge">STAGING</span></div>
     <div class="scene-chip" id="sceneChip"></div>
     <button class="ghost-btn" id="notebookBtn">📓 Memory</button>
     <button class="ghost-btn" id="newStoryBtn">+ New</button>
@@ -265,12 +275,18 @@
 <div class="modal-wrap" id="changelogModal">
   <div class="modal">
     <div class="modal-icon">🏷️</div>
-    <h2>Loomtale Updates — v1.3.6</h2>
+    <h2>Loomtale Updates — v1.4.0-staging</h2>
     <div class="modal-body">
-      <h4>What's New in v1.3.6</h4>
+      <h4>What's New in v1.4.0-staging</h4>
       <ul>
-        <li><strong>🎛️ Engine Switcher Dropdown</strong>: Easily switch between Gemini models (Gemini 3.5 Flash-Lite, Gemini Flash-Lite Latest, Gemini 3.1 Flash-Lite, or Gemini 3.5 Flash) directly from the sidebar. Your preference is saved across sessions.</li>
-        <li><strong>⚡ Smart Auto-Failover Cascade</strong>: In "Auto" mode, Loomtale routes to the fastest available model and automatically falls back to secondary models if Google experiences high demand (HTTP 503/429), preventing frayed threads.</li>
+        <li><strong>💎 Nevagate OpenAI-Compatible Engine</strong>: Staging environment for testing paid Nevagate models (DeepSeek V4 Pro, DeepSeek V4 Flash, GLM 5.2, Mimo V2.5 Pro, Kimi K2.7 Code).</li>
+        <li><strong>🛡️ Vercel Serverless CORS Relay</strong>: Seamless edge proxy (/api/nevagate) bypassing client-side browser CORS restrictions.</li>
+        <li><strong>🔒 Multiplier Blacklist &amp; Token Shield</strong>: High-risk models (> 3× multiplier like GPT-6 Astra 42× or Claude Opus 32×) are strictly excluded from the dropdown to protect your token balance.</li>
+      </ul>
+      <h4>v1.3.6</h4>
+      <ul>
+        <li><strong>🎛️ Engine Switcher Dropdown</strong>: Easily switch between Gemini models directly from the sidebar.</li>
+        <li><strong>⚡ Smart Auto-Failover Cascade</strong>: In "Auto" mode, Loomtale routes to the fastest available model and automatically falls back if Google experiences high demand.</li>
       </ul>
       <h4>v1.3.5</h4>
       <ul>
